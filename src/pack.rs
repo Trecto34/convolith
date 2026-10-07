@@ -184,6 +184,12 @@ pub fn pack(root: &Path, output: &Path, force: bool) -> Result<()> {
     f.flush()?;
     drop(f);
     if output.exists() && force {
+        if !output.is_file() {
+            bail!("output exists and is not a file: {}", output.display());
+        }
+        // POSIX rename replaces an existing file atomically. Windows requires
+        // removing the destination first because std does not expose replace.
+        #[cfg(windows)]
         fs::remove_file(output)?;
     }
     fs::rename(&tmp, output).context("publishing pack")?;
