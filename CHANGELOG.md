@@ -9,8 +9,29 @@ is independent of the crate version.
 
 ## [Unreleased]
 
+### Added
+
+- Parsers for official web-chat exports, checked against real exports: Claude
+  (`claude_web_export`: split data export with `manifest-*.json`; real retry/edit branches
+  via `parent_message_uuid`), Claude Design chats (`claude_design_export`), Perplexity
+  (`perplexity_export`: `user_data_export_*.zip`) and Gemini Google Takeout
+  (`gemini_takeout`: Conversation History; each array element is a user *or* model turn
+  and `turn_index` may repeat). ChatGPT (existing parser, extended: sharded
+  `conversations-NNN.json`, current-path flag, asset-member names, richer metadata) is now
+  verified against a real export too. Unverified-against-real-export: Gemini My Activity JSON. Zips, extracted folders and bare files auto-detect.
+  Unrecognised schemas and the other files of these exports (manifests, memories, projects,
+  feedback, design frames, account metadata/workbooks, NotebookLM, images, Office parts)
+  are inventoried as unsupported with a reason. Web-export events carry the importing
+  machine id.
+
 ### Changed
 
+- ChatGPT export parsing keeps the v0.1.0 event and conversation ids and content
+  fingerprints (node keys as event ids, `id` as conversation id, v0.1.0 parts), so
+  re-importing a ChatGPT export into an archive made by v0.1.0 creates no new events or
+  conversations; richer data (`metadata.attachments`, non-text content, current-path
+  flag, `update_time`) is added to event metadata only. Locked by a golden-id test and
+  confirmed identical to the v0.1.0 binary on a real 84-conversation export.
 - Project renamed from `aichive` to `Convolith` (crate, binary, lib, `CONVOLITH_*` env,
   docs). New manifests record `tool: "convolith"`. The `convolith-canonical` format id,
   the `convolith-local-machine-v1` machine-id hash input, the `.convolith-complete`
