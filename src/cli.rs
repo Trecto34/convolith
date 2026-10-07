@@ -78,6 +78,21 @@ pub enum Cmd {
         #[arg(long, value_parser = ["redact", "preserve"])]
         secret_policy: Option<String>,
     },
+    /// Export every event of ARCHIVE as one chronological JSONL stream (convolith.all/v1)
+    All {
+        archive: PathBuf,
+        /// Write to this file (atomically)
+        #[arg(
+            long,
+            short,
+            conflicts_with = "stdout",
+            required_unless_present = "stdout"
+        )]
+        output: Option<PathBuf>,
+        /// Write JSONL to stdout (diagnostics go to stderr)
+        #[arg(long)]
+        stdout: bool,
+    },
     /// Check a dataset; exit 1 on any FAIL
     Validate { dir: PathBuf },
     /// Print dataset counts
@@ -213,6 +228,18 @@ pub fn run(cli: Cli) -> Result<i32> {
                 }
             }
             Ok(summary.exit_code())
+        }
+        Cmd::All {
+            archive,
+            output,
+            stdout,
+        } => {
+            let stats = match (output, stdout) {
+                (Some(o), false) => crate::all_export::export_to_file(&archive, &o)?,
+                _ => crate::all_export::export_to_stdout(&archive)?,
+            };
+            eprintln!("{}", stats.summary());
+            Ok(0)
         }
         Cmd::Validate { dir } => {
             let r = validate::validate(&dir)?;

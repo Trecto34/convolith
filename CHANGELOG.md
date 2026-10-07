@@ -9,6 +9,14 @@ is independent of the crate version.
 
 ## [Unreleased]
 
+### Added
+
+- `convolith all ARCHIVE (--output FILE | --stdout)`: read-only export of every canonical
+  event as one globally chronological, deduplicated, deterministic JSONL stream in the
+  provider-independent `convolith.all/v1` schema (`spec/all-export.md`,
+  `spec/all-export.schema.json`). Events without a usable timestamp keep
+  `timestamp: null` and are placed after all timestamped events.
+
 ### Changed
 
 - Project renamed from `aichive` to `Convolith` (crate, binary, lib, `CONVOLITH_*` env,
