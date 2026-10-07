@@ -258,3 +258,120 @@ fn sharded_conversation_files_are_read() {
     import(&t.join("export"), &out);
     assert_eq!(chat(&out).len(), 3);
 }
+
+/// Structure of a real export: nodes are `{id, message, parent}` (no `children`), one
+/// `conversations.json`, roles user/assistant only, `thoughts`/`reasoning_recap`
+/// content without `parts`, `sediment://file_<h>` pointers with `file_<h>.dat` members,
+/// and the account/index sidecars. Synthetic content only.
+fn real_shape_zip(dir: &std::path::Path, name: &str, with_new_leaf: bool) -> std::path::PathBuf {
+    let n = |i: u32| format!("5e55105e-0000-4000-8000-0000000001{i:02}");
+    let msg = |i: u32, role: &str, t: f64, content: Value, meta: Value| json!({"id": n(i), "author": {"role": role, "name": null}, "create_time": t, "content": content, "metadata": meta});
+    let mut mapping = json!({
+        "client-created-root": {"id": "client-created-root", "message": null, "parent": null},
+        n(1): {"id": n(1), "parent": "client-created-root", "message": msg(1, "user", 1.7e9, json!({"content_type": "multimodal_text", "parts": ["synthetic ask",
+                {"content_type": "image_asset_pointer", "asset_pointer": "sediment://file_00000000aaaa", "size_bytes": 3, "width": 1, "height": 1, "fovea": 1, "metadata": {}}]}),
+                json!({"attachments": [{"id": "file_00000000bbbb", "name": "n.txt", "mime_type": "text/plain", "size": 3}]}))},
+        n(2): {"id": n(2), "parent": n(1), "message": msg(2, "assistant", 1.7e9 + 1.0, json!({"content_type": "thoughts", "thoughts": [{"summary": "s", "content": "c", "chunks": [], "finished": true}], "source_analysis_msg_id": "x"}), json!({"model_slug": "gpt-test"}))},
+        n(3): {"id": n(3), "parent": n(2), "message": msg(3, "assistant", 1.7e9 + 2.0, json!({"content_type": "reasoning_recap", "content": "Thought for 2s"}), json!({"model_slug": "gpt-test"}))},
+        n(4): {"id": n(4), "parent": n(3), "message": msg(4, "assistant", 1.7e9 + 3.0, json!({"content_type": "text", "parts": ["synthetic answer"]}), json!({"model_slug": "gpt-test"}))},
+        // regeneration: a second answer under the same user message
+        n(5): {"id": n(5), "parent": n(1), "message": msg(5, "assistant", 1.7e9 + 4.0, json!({"content_type": "text", "parts": ["regenerated answer"]}), json!({"model_slug": "gpt-test"}))},
+    });
+    let mut current = n(4);
+    if with_new_leaf {
+        mapping[n(6)] = json!({"id": n(6), "parent": n(4), "message": msg(6, "user", 1.7e9 + 5.0, json!({"content_type": "text", "parts": ["follow-up"]}), json!({}))});
+        current = n(6);
+    }
+    let conv = json!([{"id": n(99), "conversation_id": n(99), "title": "t", "create_time": 1.7e9, "update_time": 1.7e9 + 9.0,
+        "current_node": current, "default_model_slug": "gpt-test", "is_archived": false, "memory_scope": "global_enabled", "mapping": mapping}]);
+    let z = dir.join(name);
+    zip_of(
+        &z,
+        &[
+            ("conversations.json", conv.to_string().into_bytes()),
+            ("export_manifest.json", br#"{"export_files":[{"path":"conversations.json","size_bytes":1}],"logical_files":{}}"#.to_vec()),
+            ("sites/export_manifest.json", br#"{"artifacts":[],"requested_at":"x"}"#.to_vec()),
+            ("ads.json", br#"{"ads_profile":[],"ad_hides":[]}"#.to_vec()),
+            ("user_settings.json", b"[{}]".to_vec()),
+            ("library_files.json", br#"[{"file_id":"f","library_file_category":"c"}]"#.to_vec()),
+            ("conversation_asset_file_names.json", br#"{"file_00000000aaaa.dat":"x.png"}"#.to_vec()),
+            ("sectioned_conversations.json", b"[]".to_vec()),
+            ("file_00000000aaaa.dat", b"\x89PNGsynthetic".to_vec()),
+        ],
+    );
+    z
+}
+
+#[test]
+fn real_shape_without_children_keeps_branches_thoughts_and_asset_members() {
+    let t = tmp("gpt-real");
+    let z = real_shape_zip(&t, "e.zip", false);
+    let out = t.join("out");
+    import(&z, &out);
+    let evs = chat(&out);
+    assert_eq!(evs.len(), 5);
+    let by = |i: u32| {
+        let id = format!("5e55105e-0000-4000-8000-0000000001{i:02}");
+        evs.iter()
+            .find(|e| e.metadata["native_id"] == id.as_str())
+            .unwrap()
+    };
+    // branches come from `parent`; the regeneration is off the current path
+    assert_eq!(
+        by(5).metadata["parent_native_id"],
+        by(2).metadata["parent_native_id"]
+            .as_str()
+            .map(|_| by(1).metadata["native_id"].clone())
+            .unwrap()
+    );
+    assert_eq!(by(5).metadata["chatgpt_on_current_path"], false);
+    assert_eq!(by(4).metadata["chatgpt_on_current_path"], true);
+    assert!(
+        by(4).metadata.get("chatgpt_children").is_none(),
+        "absent in source, absent here"
+    );
+    // thoughts/recap have no parts: kept as metadata, not parts (v0.1.0 fingerprints)
+    assert!(
+        by(2).content.is_empty() && by(2).metadata["chatgpt_content"]["content_type"] == "thoughts"
+    );
+    assert!(by(3).content.is_empty());
+    // image pointer and attachment id resolve to the shipped .dat member names
+    assert_eq!(
+        by(1).metadata["chatgpt_asset_members"],
+        json!(["file_00000000bbbb.dat", "file_00000000aaaa.dat"])
+    );
+    // sidecars: reasons, not parsing
+    for (needle, fmt) in [
+        ("export_manifest.json", "chatgpt-export-manifest"),
+        ("ads.json", "chatgpt-export-sidecar"),
+        ("user_settings.json", "chatgpt-export-sidecar"),
+        ("library_files.json", "chatgpt-export-sidecar"),
+        (
+            "conversation_asset_file_names.json",
+            "chatgpt-export-sidecar",
+        ),
+        ("sectioned_conversations.json", "chatgpt-export-sidecar"),
+        ("file_00000000aaaa.dat", "chatgpt-export-attachment"),
+    ] {
+        assert!(
+            inventory(&out, needle)
+                .iter()
+                .all(|(f, s)| f == fmt && s == "unsupported"),
+            "{needle}"
+        );
+    }
+    assert_valid(&out);
+}
+
+#[test]
+fn real_shape_reimport_is_idempotent_and_newer_adds_only_new() {
+    let t = tmp("gpt-real-idem");
+    let out = t.join("out");
+    let log = import(&real_shape_zip(&t, "a.zip", false), &out);
+    assert!(log.contains("events: 5 new, 0 duplicate"), "{log}");
+    let log = import(&real_shape_zip(&t, "a.zip", false), &out);
+    assert!(log.contains("events: 0 new, 5 duplicate"), "{log}");
+    let log = import(&real_shape_zip(&t, "b.zip", true), &out);
+    assert!(log.contains("events: 1 new, 5 duplicate"), "{log}");
+    assert_valid(&out);
+}

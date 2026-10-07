@@ -1,10 +1,17 @@
 //! ChatGPT data export (`conversations.json`, or sharded `conversations-NNN.json`).
 //!
-//! Status: **unverified-against-real-export**. Built from the documented export
-//! layout (a `mapping` tree of nodes with `parent`/`children`, `current_node`,
-//! `author.role`, `content.parts`, epoch-float `create_time`/`update_time`,
-//! `metadata.model_slug`, `metadata.attachments`); no real export was available
-//! to check it against. Unrecognised content types are kept as opaque parts and
+//! Status: **verified against a real export** (schema inspected, 84 conversations; tests
+//! use synthetic content). Real shape: one `conversations.json` (a manifest lists
+//! shards, none were sharded) of conversations with `mapping` nodes `{id, message,
+//! parent}` — **no `children`**, branches are recovered from `parent` — `current_node`,
+//! `message.author.role` (user/assistant), `message.id` == node key, epoch-float
+//! `create_time`, `content.content_type` `text`/`multimodal_text`/`thoughts`/
+//! `reasoning_recap` (the last two have no `parts`: kept in `chatgpt_content` metadata,
+//! not as parts, to keep v0.1.0 content fingerprints), `metadata.model_slug`,
+//! `metadata.attachments` and `sediment://file_<h>` pointers (bytes are `file_<h>.dat`
+//! members; named in `chatgpt_asset_members`). Messages copied by conversation
+//! branching share node ids across conversations and merge into one event with several
+//! observations (identical provider id). Unrecognised content types are kept as opaque parts and
 //! a conversation without a `mapping` object is a counted failure, never a guess.
 //!
 //! Every node that carries a message is emitted, so regenerations and edited
@@ -50,7 +57,7 @@ impl SourceParser for ChatGptParser {
         true
     }
     fn description(&self) -> &'static str {
-        "OpenAI ChatGPT data export conversations.json (unverified against a real export)"
+        "OpenAI ChatGPT data export conversations.json (verified against a real export)"
     }
     fn detect(&self, p: &Probe) -> Detection {
         if is_conversations_name(p.filename())
@@ -299,10 +306,35 @@ fn parse_conversation(
             "chatgpt_parent".into(),
             node.get("parent").cloned().unwrap_or(Value::Null),
         );
-        draft.metadata.insert(
-            "chatgpt_children".into(),
-            node.get("children").cloned().unwrap_or(json!([])),
-        );
+        // Real exports carry no `children`; only record it when the source does.
+        if let Some(c) = node.get("children") {
+            draft.metadata.insert("chatgpt_children".into(), c.clone());
+        }
+        // Real exports ship attachment/image bytes as `<file id>.dat` members next to
+        // conversations.json; record which members belong to this message (names only).
+        let members: Vec<String> = message
+            .pointer("/metadata/attachments")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|a| a.get("id").and_then(Value::as_str))
+            .chain(
+                message
+                    .pointer("/content/parts")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|p| p.get("asset_pointer").and_then(Value::as_str))
+                    .filter_map(|p| p.split_once("://").map(|x| x.1)),
+            )
+            .filter(|id| id.starts_with("file_"))
+            .map(|id| format!("{id}.dat"))
+            .collect();
+        if !members.is_empty() {
+            draft
+                .metadata
+                .insert("chatgpt_asset_members".into(), json!(members));
+        }
         draft.metadata.insert(
             "chatgpt_current_node".into(),
             obj.get("current_node").cloned().unwrap_or(Value::Null),

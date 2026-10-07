@@ -354,9 +354,10 @@ Informative; the canonical record shape is unchanged. Parsers `chatgpt_export`,
 `claude_web_export`, `claude_design_export`, `gemini_takeout` and `perplexity_export` read the files of the
 providers' own data downloads (zip members or extracted files). Verification status
 (schema inspected against real exports; fixtures are synthetic content in the real
-structure): verified — `claude_web_export`, `claude_design_export`, `perplexity_export`,
-`gemini_takeout` (Takeout *Conversation History*). **Unverified-against-real-export** —
-`chatgpt_export` (no real ChatGPT export was available) and Gemini *My Activity* JSON.
+structure): verified — `chatgpt_export`, `claude_web_export`, `claude_design_export`,
+`perplexity_export`, `gemini_takeout` (Takeout *Conversation History*).
+**Unverified-against-real-export** — Gemini *My Activity* JSON only (and ChatGPT sharded
+`conversations-NNN.json`, which the real export manifest allows but the real sample did not use).
 
 * **Provenance**: `source_path` is `<zip>!/<member>` (or the file path), `container_chain`
   holds the zip name(s); `record_id` is the provider message id. `machine_id` is the
@@ -374,7 +375,7 @@ structure): verified — `claude_web_export`, `claude_design_export`, `perplexit
 * **Timestamps**: `timestamp_original` keeps the provider value verbatim (epoch float or
   ISO string), `timestamp` is its UTC instant; a missing time stays missing.
 * **Branches**: ChatGPT `mapping` nodes are all emitted; `parent_native_id` points to the
-  nearest ancestor carrying a message. Claude messages carry `parent_message_uuid` (real
+  nearest ancestor carrying a message (real exports have no `children`; branches come from `parent`). Claude messages carry `parent_message_uuid` (real
   retry/edit branches; the all-zero root sentinel is "no parent"). Gemini and Perplexity
   turns are not linked unless the export links them (Perplexity: answer -> its query).
 * **Unknown versions**: files that look like an export but match no known shape (or a

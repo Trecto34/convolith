@@ -183,10 +183,40 @@ pub fn known_unsupported(p: &Probe) -> Option<(&'static str, &'static str)> {
             "Claude login history; account metadata, deliberately not imported",
         ));
     }
+    if name == "export_manifest.json"
+        && (head_has("\"export_files\"") || head_has("\"logical_files\""))
+    {
+        return Some((
+            "chatgpt-export-manifest",
+            "ChatGPT export manifest listing the export's files/shards; not conversation history",
+        ));
+    }
+    if name == "export_manifest.json" && rel.starts_with("sites/") {
+        return Some((
+            "chatgpt-export-manifest",
+            "ChatGPT sites export manifest; not conversation history",
+        ));
+    }
     if !in_export(p) {
         return None;
     }
     match name.as_str() {
+        "ads.json" if head_has("\"ads_profile\"") => Some((
+            "chatgpt-export-sidecar",
+            "ChatGPT ads profile; account data, deliberately not imported",
+        )),
+        "user_settings.json" => Some((
+            "chatgpt-export-sidecar",
+            "ChatGPT user settings; account data, not conversation history",
+        )),
+        "library_files.json" if head_has("\"library_file_category\"") || head_has("\"file_id\"") => Some((
+            "chatgpt-export-sidecar",
+            "ChatGPT file-library metadata; conversations keep their own attachment references",
+        )),
+        "conversation_asset_file_names.json" | "sectioned_conversations.json" => Some((
+            "chatgpt-export-sidecar",
+            "ChatGPT asset-name / conversation-section index; not conversation history",
+        )),
         "chat.html" => Some((
             "chatgpt-export-sidecar",
             "ChatGPT chat.html is a rendered copy of conversations.json",
@@ -206,7 +236,7 @@ pub fn known_unsupported(p: &Probe) -> Option<(&'static str, &'static str)> {
         n if (n.starts_with("file-") || n.starts_with("file_"))
             && matches!(
                 p.ext().as_str(),
-                "png" | "jpg" | "jpeg" | "webp" | "gif" | "pdf" | "txt" | "wav" | "mp3"
+                "png" | "jpg" | "jpeg" | "webp" | "gif" | "pdf" | "txt" | "wav" | "mp3" | "dat"
             ) =>
         {
             Some((

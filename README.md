@@ -161,12 +161,13 @@ under the same provider+application; identical text alone never merges.
 | Perplexity user data export: `user_data_export_*.zip` > `conversations-*.json` (+ `user-data-*.xlsx`) | `perplexity_export` | **verified** against two real exports | Perplexity: Settings > Account > Download/Export your data |
 | Gemini via Google Takeout, `Gemini in Workspace/Conversation History/conversation_*.txt` | `gemini_takeout` | **verified** against a real Takeout | takeout.google.com: select Gemini / Gemini in Workspace |
 | Gemini via Google Takeout, `My Activity/Gemini Apps/MyActivity.json` | `gemini_takeout` | **unverified-against-real-export** (none available; the real Takeout had no My Activity folder) | takeout.google.com: My Activity > Gemini Apps, format JSON |
-| ChatGPT data export (`conversations.json`, sharded `conversations-NNN.json`) | `chatgpt_export` | **unverified-against-real-export** for the current layout (no real ChatGPT export was available; the parser predates this work and is built from the documented layout); v0.1.0 event ids are preserved | ChatGPT: Settings > Data controls > Export data; the link arrives by email |
+| ChatGPT data export (`conversations.json`; sharded `conversations-NNN.json` handled but unseen) | `chatgpt_export` | **verified** against a real export (84 conversations; schema only, synthetic-content tests); v0.1.0 event/conversation ids preserved | ChatGPT: Settings > Data controls > Export data; the link arrives by email |
 
 Not guessed at: an export whose schema or declared version is not recognised is listed
 in the import report as `unsupported` with the reason, never parsed on a best guess.
 Also inventoried (not imported), each with its reason: ChatGPT `chat.html`, `user.json`,
-`message_feedback.json`, attachment files; Claude `manifest-*.json`, `users.json`,
+`message_feedback.json`, `ads.json`, `user_settings.json`, `library_files.json`, manifests and
+indexes, and the `file_*.dat` attachment/image bytes (named per message in `chatgpt_asset_members`); Claude `manifest-*.json`, `users.json`,
 `login_history.json`, `memories/`, `projects/` (project docs), `reflections/` (feedback),
 `artifacts/` (design frames); Perplexity `user-data-*.xlsx`; Takeout NotebookLM, Gems and
 `MyActivity.html`; conversation images; Office-document internals. Attachments are kept as references (name, mime,
@@ -174,8 +175,11 @@ provider file id); their bytes are not imported. Gemini's per-turn times are
 *last-modified* times and are marked so (`gemini_timestamp_kind`); a Takeout turn is either a
 user or a model turn and `turn_index` can repeat, so turns are identified by role, index and
 occurrence. Claude exports carry real edit/retry branches (`parent_message_uuid`; the
-all-zero root sentinel means no parent). ChatGPT branches (regenerations) are all kept;
-`chatgpt_on_current_path` marks the live one.
+all-zero root sentinel means no parent). ChatGPT branches (regenerations) are all kept, recovered from `parent` (real exports
+have no `children`); `chatgpt_on_current_path` marks the live one. ChatGPT `thoughts` and
+`reasoning_recap` messages are kept in event metadata (`chatgpt_content`), not as content
+parts, so v0.1.0 content fingerprints stay valid. Messages copied by conversation branching
+share ids across conversations and merge into one event with several observations.
 
 ## Known limitations
 
