@@ -542,9 +542,33 @@ fn import_multiple_files_at_the_same_time() {
     let file1 = t.join("in/session1.jsonl");
     let file2 = t.join("in/session2.jsonl");
     let file3 = t.join("in/session3.jsonl");
-    write(&file1, claude_session("5e55105e-0000-4000-8000-000000000011", "/home/u/p", "main", 1..=10));
-    write(&file2, claude_session("5e55105e-0000-4000-8000-000000000012", "/home/u/p", "main", 1..=20));
-    write(&file3, claude_session("5e55105e-0000-4000-8000-000000000013", "/home/u/p", "main", 1..=30));
+    write(
+        &file1,
+        claude_session(
+            "5e55105e-0000-4000-8000-000000000011",
+            "/home/u/p",
+            "main",
+            1..=10,
+        ),
+    );
+    write(
+        &file2,
+        claude_session(
+            "5e55105e-0000-4000-8000-000000000012",
+            "/home/u/p",
+            "main",
+            1..=20,
+        ),
+    );
+    write(
+        &file3,
+        claude_session(
+            "5e55105e-0000-4000-8000-000000000013",
+            "/home/u/p",
+            "main",
+            1..=30,
+        ),
+    );
 
     let out = t.join("out");
     let (code, log) = cli(&[
@@ -573,8 +597,24 @@ fn import_with_progress_and_no_progress_flags() {
     let t = tmp("multi-progress");
     let file1 = t.join("in/session1.jsonl");
     let file2 = t.join("in/session2.jsonl");
-    write(&file1, claude_session("5e55105e-0000-4000-8000-000000000021", "/home/u/p", "main", 1..=5));
-    write(&file2, claude_session("5e55105e-0000-4000-8000-000000000022", "/home/u/p", "main", 1..=5));
+    write(
+        &file1,
+        claude_session(
+            "5e55105e-0000-4000-8000-000000000021",
+            "/home/u/p",
+            "main",
+            1..=5,
+        ),
+    );
+    write(
+        &file2,
+        claude_session(
+            "5e55105e-0000-4000-8000-000000000022",
+            "/home/u/p",
+            "main",
+            1..=5,
+        ),
+    );
 
     // Test --no-progress flag
     let out1 = t.join("out-no-progress");
@@ -608,14 +648,26 @@ fn inspect_multiple_files_at_the_same_time() {
     let t = tmp("multi-inspect");
     let file1 = t.join("in/session1.jsonl");
     let file2 = t.join("in/session2.jsonl");
-    write(&file1, claude_session("5e55105e-0000-4000-8000-000000000031", "/home/u/p", "main", 1..=2));
-    write(&file2, claude_session("5e55105e-0000-4000-8000-000000000032", "/home/u/p", "main", 1..=2));
+    write(
+        &file1,
+        claude_session(
+            "5e55105e-0000-4000-8000-000000000031",
+            "/home/u/p",
+            "main",
+            1..=2,
+        ),
+    );
+    write(
+        &file2,
+        claude_session(
+            "5e55105e-0000-4000-8000-000000000032",
+            "/home/u/p",
+            "main",
+            1..=2,
+        ),
+    );
 
-    let (code, log) = cli(&[
-        "inspect",
-        file1.to_str().unwrap(),
-        file2.to_str().unwrap(),
-    ]);
+    let (code, log) = cli(&["inspect", file1.to_str().unwrap(), file2.to_str().unwrap()]);
     assert_eq!(code, 0, "inspect failed: {log}");
     assert!(log.contains("session1.jsonl"));
     assert!(log.contains("session2.jsonl"));
@@ -626,16 +678,27 @@ fn discover_multiple_paths_at_the_same_time() {
     let t = tmp("multi-discover");
     let dir1 = t.join("in1");
     let dir2 = t.join("in2");
-    write(&dir1.join("session1.jsonl"), claude_session("5e55105e-0000-4000-8000-000000000041", "/home/u/p", "main", 1..=2));
-    write(&dir2.join("session2.jsonl"), claude_session("5e55105e-0000-4000-8000-000000000042", "/home/u/p", "main", 1..=2));
+    write(
+        &dir1.join("session1.jsonl"),
+        claude_session(
+            "5e55105e-0000-4000-8000-000000000041",
+            "/home/u/p",
+            "main",
+            1..=2,
+        ),
+    );
+    write(
+        &dir2.join("session2.jsonl"),
+        claude_session(
+            "5e55105e-0000-4000-8000-000000000042",
+            "/home/u/p",
+            "main",
+            1..=2,
+        ),
+    );
 
-    let (code, log) = cli(&[
-        "discover",
-        dir1.to_str().unwrap(),
-        dir2.to_str().unwrap(),
-    ]);
+    let (code, log) = cli(&["discover", dir1.to_str().unwrap(), dir2.to_str().unwrap()]);
     assert_eq!(code, 0, "discover failed: {log}");
     assert!(log.contains("session1.jsonl"));
     assert!(log.contains("session2.jsonl"));
 }
-

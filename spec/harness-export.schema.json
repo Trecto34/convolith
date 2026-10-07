@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://convolith.example/spec/v1/harness-export.schema.json",
+  "title": "convolith.harness/v1 export line",
+  "description": "Compact normalized interchange format for downstream memory and agent systems.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/event"
+    },
+    {
+      "$ref": "#/$defs/conversation"
+    }
+  ],
+  "$defs": {
+    "conversation": {
+      "type": "object",
+      "required": [
+        "schema",
+        "conversation_id",
+        "title",
+        "started_at",
+        "ended_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "convolith.harness.conversation/v1"
+        },
+        "conversation_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": ["string", "null"]
+        },
+        "started_at": {
+          "type": ["string", "null"]
+        },
+        "ended_at": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": [
+        "schema",
+        "event_id",
+        "conversation_id",
+        "session_id",
+        "parent_event_id",
+        "seq",
+        "timestamp",
+        "timestamp_confidence",
+        "role",
+        "event_type",
+        "provider",
+        "application",
+        "model",
+        "content",
+        "hidden"
+      ],
+      "properties": {
+        "schema": {
+          "const": "convolith.harness/v1"
+        },
+        "event_id": {
+          "type": "string"
+        },
+        "conversation_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": ["string", "null"]
+        },
+        "parent_event_id": {
+          "type": ["string", "null"]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timestamp": {
+          "type": ["string", "null"]
+        },
+        "timestamp_confidence": {
+          "enum": ["exact", "derived", "sequence-only", "unknown"]
+        },
+        "role": {
+          "enum": ["user", "assistant", "system", "tool", "developer", "other"]
+        },
+        "event_type": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "application": {
+          "type": "string"
+        },
+        "model": {
+          "type": ["string", "null"]
+        },
+        "content": {
+          "type": "array"
+        },
+        "machine_id": {
+          "type": ["string", "null"]
+        },
+        "project_id": {
+          "type": ["string", "null"]
+        },
+        "repository_id": {
+          "type": ["string", "null"]
+        },
+        "worktree_id": {
+          "type": ["string", "null"]
+        },
+        "branch": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "subagent": {
+          "type": ["object", "null"]
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["source_id", "record_id"],
+            "properties": {
+              "source_id": { "type": "string" },
+              "record_id": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

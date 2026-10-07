@@ -93,22 +93,10 @@ mod tests {
 
     #[test]
     fn progress_mode_flags() {
-        assert_eq!(
-            ProgressMode::from_flags(false, false),
-            ProgressMode::Auto
-        );
-        assert_eq!(
-            ProgressMode::from_flags(true, false),
-            ProgressMode::Always
-        );
-        assert_eq!(
-            ProgressMode::from_flags(false, true),
-            ProgressMode::Never
-        );
-        assert_eq!(
-            ProgressMode::from_flags(true, true),
-            ProgressMode::Never
-        );
+        assert_eq!(ProgressMode::from_flags(false, false), ProgressMode::Auto);
+        assert_eq!(ProgressMode::from_flags(true, false), ProgressMode::Always);
+        assert_eq!(ProgressMode::from_flags(false, true), ProgressMode::Never);
+        assert_eq!(ProgressMode::from_flags(true, true), ProgressMode::Never);
         assert!(ProgressMode::Always.should_show());
         assert!(!ProgressMode::Never.should_show());
     }
@@ -147,4 +135,3 @@ mod tests {
         finish_progress(&pb, "done");
     }
 }
-

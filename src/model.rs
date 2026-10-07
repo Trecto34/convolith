@@ -61,6 +61,7 @@ pub enum EventType {
     Interruption,
     Error,
     Opaque,
+    Control,
 }
 
 /// Only reasoning material that is literally present in the source is ever

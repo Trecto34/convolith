@@ -216,6 +216,9 @@ pub fn parse_rfc3339(input: &str) -> Option<Utc> {
 /// Interpret a value that may be epoch seconds, epoch milliseconds, epoch
 /// microseconds, or a string timestamp. Used for database columns.
 pub fn parse_epoch_like(value: i64) -> Option<(Utc, TimestampConfidence)> {
+    if value <= 0 {
+        return None;
+    }
     let abs = value.unsigned_abs();
     let unit = if abs < 10_000_000_000 {
         1_000_000_000
@@ -241,6 +244,9 @@ pub fn parse_json_timestamp(value: &serde_json::Value) -> Option<(Utc, Timestamp
                 parse_epoch_like(i)
             } else {
                 let f = n.as_f64()?;
+                if f <= 0.0 {
+                    return None;
+                }
                 if f.abs() < 1e11 {
                     Some((Utc((f * 1e9) as i64), TimestampConfidence::ProviderDerived))
                 } else {

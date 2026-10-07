@@ -308,3 +308,364 @@ fn needs_exactly_one_target_and_a_real_archive() {
     std::fs::remove_dir_all(&d).ok();
     let _ = json!(null);
 }
+
+fn read_zst_lines(p: &Path) -> Vec<Value> {
+    use std::io::BufRead;
+    let f = std::fs::File::open(p).unwrap();
+    let dec = zstd::stream::read::Decoder::new(std::io::BufReader::new(f)).unwrap();
+    let r = std::io::BufReader::new(dec);
+    r.lines()
+        .map(|l| serde_json::from_str(&l.unwrap()).unwrap())
+        .collect()
+}
+
+#[test]
+fn harness_end_to_end_real_fixtures_matches_canonical_events() {
+    let d = tmp("harness-real");
+    let srcs: Vec<PathBuf> = ["claude-code", "codex", "gemini-cli", "chatgpt", "pi"]
+        .iter()
+        .map(|n| Path::new(FIXTURES).join(n))
+        .collect();
+    let a = d.join("a");
+    import(&srcs, &a);
+
+    let out_canonical = d.join("out").join("all.jsonl");
+    let f_can = run_all(&a, &["--output", out_canonical.to_str().unwrap()]);
+    assert!(
+        f_can.status.success(),
+        "{}",
+        String::from_utf8_lossy(&f_can.stderr)
+    );
+    let can_file = std::fs::read(&out_canonical).unwrap();
+    let can_lines = lines(&can_file);
+
+    let out_harness_zst = d.join("out").join("convolith-harness.jsonl.zst");
+    let f_harn_zst = run_all(
+        &a,
+        &["--harness", "--output", out_harness_zst.to_str().unwrap()],
+    );
+    assert!(
+        f_harn_zst.status.success(),
+        "{}",
+        String::from_utf8_lossy(&f_harn_zst.stderr)
+    );
+
+    let out_harness = d.join("out").join("convolith-harness.jsonl");
+    let f_harn_plain = run_all(
+        &a,
+        &[
+            "--harness",
+            "--no-compress",
+            "--output",
+            out_harness.to_str().unwrap(),
+        ],
+    );
+    assert!(
+        f_harn_plain.status.success(),
+        "{}",
+        String::from_utf8_lossy(&f_harn_plain.stderr)
+    );
+
+    let harn_from_zst = read_zst_lines(&out_harness_zst);
+    let harn_from_plain = lines(&std::fs::read(&out_harness).unwrap());
+    assert_eq!(
+        harn_from_zst, harn_from_plain,
+        "zst decompression matches uncompressed"
+    );
+
+    // Compressed output is substantially smaller than full canonical JSONL export
+    let zst_size = std::fs::metadata(&out_harness_zst).unwrap().len();
+    let can_size = std::fs::metadata(&out_canonical).unwrap().len();
+    assert!(
+        zst_size < can_size / 3,
+        "compressed harness ({zst_size} bytes) must be substantially smaller than canonical ({can_size} bytes)"
+    );
+
+    // Also test that --uncompressed alias works
+    let out_harness_alias = d.join("out").join("convolith-harness-alias.jsonl");
+    let f_harn_alias = run_all(
+        &a,
+        &[
+            "--harness",
+            "--uncompressed",
+            "--output",
+            out_harness_alias.to_str().unwrap(),
+        ],
+    );
+    assert!(f_harn_alias.status.success());
+    assert_eq!(
+        std::fs::read(&out_harness_alias).unwrap(),
+        std::fs::read(&out_harness).unwrap()
+    );
+
+    // Also test --stdout works for harness
+    let so = run_all(&a, &["--harness", "--stdout"]);
+    assert!(so.status.success());
+    let harn_from_stdout = lines(&so.stdout);
+    assert_eq!(harn_from_stdout, harn_from_plain);
+
+    // Conversation metadata is emitted once per conversation with schema convolith.harness.conversation/v1
+    let conv_records: Vec<_> = harn_from_plain
+        .iter()
+        .filter(|e| e["schema"] == "convolith.harness.conversation/v1")
+        .collect();
+    assert!(!conv_records.is_empty(), "conversation metadata emitted");
+    let mut conv_ids = std::collections::HashSet::new();
+    for c in &conv_records {
+        assert!(c["conversation_id"].is_string());
+        assert!(
+            conv_ids.insert(c["conversation_id"].as_str().unwrap()),
+            "conversation emitted once"
+        );
+        assert!(c.get("title").is_some());
+        assert!(c.get("started_at").is_some());
+        assert!(c.get("ended_at").is_some());
+    }
+
+    // Event records: schema convolith.harness/v1
+    let harn_events: Vec<Value> = harn_from_plain
+        .iter()
+        .filter(|e| e["schema"] == "convolith.harness/v1")
+        .cloned()
+        .collect();
+
+    // Event IDs and counts match the equivalent canonical event set
+    assert_eq!(harn_events.len(), can_lines.len(), "event counts match");
+    let mut h_set: Vec<_> = ids(&harn_events);
+    let mut c_set: Vec<_> = ids(&can_lines);
+    h_set.sort();
+    c_set.sort();
+    assert_eq!(h_set, c_set, "event ID set matches canonical");
+
+    // Conversation metadata is NOT duplicated per event
+    for e in &harn_events {
+        assert!(
+            e.get("conversation").is_none(),
+            "event must not duplicate conversation metadata: {}",
+            e["event_id"]
+        );
+    }
+
+    // Full provenance is not duplicated per event: only lightweight source_refs
+    for e in &harn_events {
+        if let Some(refs) = e.get("source_refs").and_then(Value::as_array) {
+            for r in refs {
+                assert!(r.get("source_id").is_some());
+                assert!(r.get("record_id").is_some());
+                // None of the heavy forensic provenance fields
+                assert!(r.get("container_chain").is_none());
+                assert!(r.get("original_path").is_none());
+                assert!(r.get("source_path").is_none());
+                assert!(r.get("parser").is_none());
+                assert!(r.get("parser_version").is_none());
+                assert!(r.get("source_sha256").is_none());
+                assert!(r.get("first_seen").is_none());
+                assert!(r.get("import_run").is_none());
+                assert!(r.get("identity_tier").is_none());
+                assert!(r.get("observation_id").is_none());
+            }
+        }
+    }
+
+    // Raw metadata blob is NOT duplicated on harness events
+    for e in &harn_events {
+        assert!(e.get("metadata").is_none(), "metadata blob omitted");
+    }
+
+    // Hidden field is boolean on every event
+    for e in &harn_events {
+        assert!(e["hidden"].is_boolean(), "hidden must be boolean");
+    }
+
+    std::fs::remove_dir_all(&d).ok();
+}
+
+#[test]
+fn harness_parent_branch_relationships_survive_and_no_flattening() {
+    let d = tmp("harness-branches");
+    let a = d.join("arch");
+
+    let mut user = ev(
+        "ev_user_1",
+        "c1",
+        0,
+        Some("2026-03-01T10:00:00Z"),
+        TimestampConfidence::Exact,
+    );
+    user.content = vec![Part::text("Question")];
+
+    let mut ans_a = ev(
+        "ev_answer_a",
+        "c1",
+        1,
+        Some("2026-03-01T10:01:00Z"),
+        TimestampConfidence::Exact,
+    );
+    ans_a.parent_event_id = Some("ev_user_1".into());
+    ans_a.role = Role::Assistant;
+    ans_a.content = vec![Part::text("Response A")];
+
+    let mut ans_b = ev(
+        "ev_answer_b",
+        "c1",
+        2,
+        Some("2026-03-01T10:02:00Z"),
+        TimestampConfidence::Exact,
+    );
+    ans_b.parent_event_id = Some("ev_user_1".into());
+    ans_b.role = Role::Assistant;
+    ans_b.content = vec![Part::text("Response B")];
+
+    archive(&a, &[vec![user, ans_a, ans_b]]);
+
+    let o = run_all(&a, &["--harness", "--stdout"]);
+    assert!(o.status.success());
+    let v = lines(&o.stdout);
+    let events: Vec<_> = v
+        .iter()
+        .filter(|e| e["schema"] == "convolith.harness/v1")
+        .collect();
+
+    assert_eq!(events.len(), 3);
+    let by_id = |id: &str| events.iter().find(|e| e["event_id"] == id).unwrap();
+
+    let a_rec = by_id("ev_answer_a");
+    let b_rec = by_id("ev_answer_b");
+
+    // Both assistant events legally share the same parent_event_id
+    assert_eq!(a_rec["parent_event_id"], "ev_user_1");
+    assert_eq!(b_rec["parent_event_id"], "ev_user_1");
+    assert_eq!(a_rec["role"], "assistant");
+    assert_eq!(b_rec["role"], "assistant");
+    assert_ne!(a_rec["seq"], b_rec["seq"]);
+
+    std::fs::remove_dir_all(&d).ok();
+}
+
+#[test]
+fn harness_zero_timestamps_never_become_1970_and_timestampless_ordering_deterministic() {
+    use TimestampConfidence::*;
+    let d = tmp("harness-timestamps");
+    let a = d.join("arch");
+
+    let ev_future = ev("e_future", "c1", 0, Some("2026-05-01T12:00:00Z"), Exact);
+    // Explicit 1970 timestamp strings must never remain 1970
+    let ev_zero_iso = ev(
+        "e_zero_iso",
+        "c1",
+        1,
+        Some("1970-01-01T00:00:00Z"),
+        ProviderDerived,
+    );
+    let ev_zero_nanos = ev(
+        "e_zero_nanos",
+        "c2",
+        0,
+        Some("1970-01-01T00:00:00.000000000Z"),
+        Exact,
+    );
+    let ev_none = ev("e_none", "c2", 1, None, Unknown);
+    let ev_seq = ev("e_seq", "c2", 2, None, SequenceOnly);
+
+    archive(
+        &a,
+        &[vec![ev_future, ev_zero_iso, ev_zero_nanos, ev_none, ev_seq]],
+    );
+
+    let o1 = run_all(&a, &["--harness", "--stdout"]);
+    assert!(o1.status.success());
+    let o2 = run_all(&a, &["--harness", "--stdout"]);
+    assert_eq!(o1.stdout, o2.stdout, "export is deterministic");
+
+    let v = lines(&o1.stdout);
+    let events: Vec<_> = v
+        .iter()
+        .filter(|e| e["schema"] == "convolith.harness/v1")
+        .collect();
+
+    let by_id = |id: &str| events.iter().find(|e| e["event_id"] == id).unwrap();
+
+    // Zero timestamps became null and unknown confidence
+    for id in ["e_zero_iso", "e_zero_nanos", "e_none", "e_seq"] {
+        let e = by_id(id);
+        assert!(
+            e["timestamp"].is_null(),
+            "{id} must have null timestamp, got {:?}",
+            e["timestamp"]
+        );
+    }
+
+    assert_eq!(by_id("e_zero_iso")["timestamp_confidence"], "unknown");
+    assert_eq!(by_id("e_zero_nanos")["timestamp_confidence"], "unknown");
+    assert_eq!(by_id("e_none")["timestamp_confidence"], "unknown");
+    assert_eq!(by_id("e_seq")["timestamp_confidence"], "sequence-only");
+
+    // Timed event comes first, untimed trail
+    assert_eq!(events[0]["event_id"], "e_future");
+    assert_eq!(events[0]["timestamp"], "2026-05-01T12:00:00.000000000Z");
+
+    // Untimed events are ordered deterministically by confidence rank then conversation and seq
+    let untimed_ids: Vec<_> = events[1..]
+        .iter()
+        .map(|e| e["event_id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        untimed_ids,
+        ["e_seq", "e_zero_iso", "e_zero_nanos", "e_none"]
+    );
+
+    std::fs::remove_dir_all(&d).ok();
+}
+
+#[test]
+fn harness_hidden_and_control_events_remain_identifiable() {
+    let d = tmp("harness-hidden");
+    let a = d.join("arch");
+
+    let ev_msg = ev(
+        "ev_user",
+        "c1",
+        0,
+        Some("2026-01-01T00:00:00Z"),
+        TimestampConfidence::Exact,
+    );
+
+    let mut ev_ctrl = ev("ev_ctrl", "c1", 1, None, TimestampConfidence::Unknown);
+    ev_ctrl.role = Role::Other;
+    ev_ctrl.content = vec![Part::text(
+        "<system-reminder>internal instructions</system-reminder>",
+    )];
+
+    let mut ev_hidden = ev("ev_hidden", "c1", 2, None, TimestampConfidence::Unknown);
+    ev_hidden.metadata.insert(
+        "chatgpt_is_visually_hidden_from_conversation".into(),
+        json!(true),
+    );
+
+    let mut ev_comp = ev("ev_comp", "c1", 3, None, TimestampConfidence::Unknown);
+    ev_comp.event_type = EventType::Compaction;
+
+    archive(&a, &[vec![ev_msg, ev_ctrl, ev_hidden, ev_comp]]);
+
+    let o = run_all(&a, &["--harness", "--stdout"]);
+    assert!(o.status.success());
+    let v = lines(&o.stdout);
+    let events: Vec<_> = v
+        .iter()
+        .filter(|e| e["schema"] == "convolith.harness/v1")
+        .collect();
+
+    let by_id = |id: &str| events.iter().find(|e| e["event_id"] == id).unwrap();
+
+    assert_eq!(by_id("ev_user")["hidden"], false);
+    assert_eq!(by_id("ev_user")["event_type"], "message");
+
+    assert_eq!(by_id("ev_ctrl")["hidden"], true);
+    assert_eq!(by_id("ev_ctrl")["event_type"], "control");
+
+    assert_eq!(by_id("ev_hidden")["hidden"], true);
+
+    assert_eq!(by_id("ev_comp")["hidden"], true);
+
+    std::fs::remove_dir_all(&d).ok();
+}

@@ -113,7 +113,8 @@
         "agent_result",
         "interruption",
         "error",
-        "opaque"
+        "opaque",
+        "control"
       ]
     },
     "provider": {

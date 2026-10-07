@@ -183,16 +183,366 @@ fn truncated_document_fails_that_source_only() {
     assert_eq!(inventory(&out, "conversation_1.txt")[0].1, "failed");
 }
 
+fn make_synthetic_takeout_card(
+    app_id: Option<&str>,
+    prompt_prefix: &str,
+    prompt_text: &str,
+    timestamp: &str,
+    asst_html: &str,
+    attachment_ref: Option<&str>,
+) -> String {
+    let mut att_block = String::new();
+    let mut right_cell = String::new();
+    if let Some(att) = attachment_ref {
+        att_block = format!("<br>1 attachment.<br>- <a href=\"{att}\">{att}</a>");
+        right_cell = format!("<img src=\"{att}\" class=\"image-preview\">");
+    }
+    let details = match app_id {
+        Some(id) => format!(
+            "<b>Products:</b><br>Gemini Apps<br><b>Details:</b><br>From: <a href=\"https://gemini.google.com/app/{id}\">https://gemini.google.com/app/{id}</a><br><b>Why is this here?</b><br>..."
+        ),
+        None => "<b>Products:</b><br>Gemini Apps<br><b>Details:</b><br>From Google<br><b>Why is this here?</b><br>...".to_string(),
+    };
+
+    format!(
+        r#"<div class="outer-cell mdl-cell mdl-cell--12-col mdl-shadow--2dp">
+  <div class="mdl-grid">
+    <div class="header-cell mdl-cell mdl-cell--12-col">
+      <p class="mdl-typography--title">Gemini Apps<br></p>
+    </div>
+    <div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1">
+      {prompt_prefix}{prompt_text}{att_block}<br>
+      {timestamp}<br>
+      {asst_html}
+    </div>
+    <div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1 mdl-typography--text-right">
+      {right_cell}
+    </div>
+    <div class="content-cell mdl-cell mdl-cell--12-col mdl-typography--caption">
+      {details}
+    </div>
+  </div>
+</div>"#
+    )
+}
+
+fn make_synthetic_system_action_card(action_text: &str, timestamp: &str) -> String {
+    format!(
+        r#"<div class="outer-cell mdl-cell mdl-cell--12-col mdl-shadow--2dp">
+  <div class="mdl-grid">
+    <div class="header-cell mdl-cell mdl-cell--12-col">
+      <p class="mdl-typography--title">Gemini Apps<br></p>
+    </div>
+    <div class="content-cell mdl-cell mdl-cell--6-col mdl-typography--body-1">
+      {action_text}<br>
+      {timestamp}<br>
+    </div>
+    <div class="content-cell mdl-cell mdl-cell--12-col mdl-typography--caption">
+      <b>Products:</b><br>Gemini Apps<br>
+    </div>
+  </div>
+</div>"#
+    )
+}
+
 #[test]
-fn unknown_version_my_activity_html_is_inventoried() {
-    let t = tmp("gem-unk");
+fn takeout_html_myactivity_multi_turn_chronology_and_markdown() {
+    let t = tmp("gem-html-full");
+    let z = t.join("google-takeout.zip");
+
+    let card_sys = make_synthetic_system_action_card(
+        "Cleared Gemini Apps history",
+        "Oct 6, 2026, 12:30:00\u{202f}PM GMT-03:00",
+    );
+    // Turn 2 of conv_alpha (newer: 12:00:00, appears first in HTML because Takeout is reverse chronological)
+    let card_conv1_turn2 = make_synthetic_takeout_card(
+        Some("conv_alpha"),
+        "Prompted ",
+        "second question in the thread",
+        "Oct 6, 2026, 12:00:00\u{202f}PM GMT-03:00",
+        "<p>Second answer from assistant.</p>",
+        Some("photo.jpeg"),
+    );
+    // Turn 1 of conv_alpha (older: 11:00:00, appears second in HTML)
+    let card_conv1_turn1 = make_synthetic_takeout_card(
+        Some("conv_alpha"),
+        "Prompted ",
+        "first question with attachment",
+        "Oct 6, 2026, 11:00:00\u{202f}AM GMT-03:00",
+        "<h3>Architecture</h3><p>Here is <b>formatted</b> text with <i>italics</i> and a <a href=\"https://example.com\">link</a>.</p><ul><li>First item</li><li>Second item</li></ul><ol><li>Step one</li><li>Step two</li></ol><table><tr><th>Name</th><th>Role</th></tr><tr><td>Alice</td><td>Admin</td></tr></table><pre><code>let x = 42;</code></pre><blockquote>Note this quote</blockquote>",
+        Some("diagram.png"),
+    );
+    // Portuguese card without app id
+    let card_conv2 = make_synthetic_takeout_card(
+        None,
+        "Fez uma pergunta: ",
+        "Como funciona a fotossíntese?",
+        "6 de out. de 2026, 10:15:30 BRT",
+        "<p>A fotossíntese é o processo biológico...</p>",
+        None,
+    );
+    // Duplicate of Turn 2 to verify dedup within HTML
+    let card_conv1_turn2_dup = card_conv1_turn2.clone();
+
+    let full_html = format!(
+        "<html><head><style>.some-css {{}}</style></head><body><div class=\"mdl-grid\">{card_sys}\n{card_conv1_turn2}\n{card_conv1_turn1}\n{card_conv2}\n{card_conv1_turn2_dup}</div></body></html>"
+    );
+
+    zip_of(
+        &z,
+        &[
+            (
+                "Takeout/My Activity/Gemini Apps/MyActivity.html",
+                full_html.into_bytes(),
+            ),
+            (
+                "Takeout/My Activity/Gemini Apps/diagram.png",
+                b"\x89PNG\r\n\x1a\nsynthetic_diagram".to_vec(),
+            ),
+            (
+                "Takeout/My Activity/Gemini Apps/photo.jpg",
+                b"\xff\xd8synthetic_jpg".to_vec(),
+            ),
+        ],
+    );
+
+    let out = t.join("out");
+    let log = import(&z, &out);
+    assert_valid(&out);
+    assert!(log.contains("events: 6 new, 0 duplicate"), "{log}");
+
+    let evs = gem(&out);
+    assert_eq!(
+        evs.len(),
+        6,
+        "2 turns in conv1 (4 evs) + 1 turn in conv2 (2 evs)"
+    );
+
+    // Find conversation alpha events
+    let c1_evs: Vec<_> = evs
+        .iter()
+        .filter(|e| {
+            e.metadata
+                .get("native_id")
+                .and_then(Value::as_str)
+                .map(|s| s.contains("conv_alpha"))
+                .unwrap_or(false)
+        })
+        .collect();
+    assert_eq!(c1_evs.len(), 4);
+
+    // Verify chronological order (Turn 1 before Turn 2)
+    assert_eq!(c1_evs[0].role, Role::User);
+    assert_eq!(c1_evs[0].seq, 0);
+    assert_eq!(
+        c1_evs[0].timestamp_original.as_deref(),
+        Some("Oct 6, 2026, 11:00:00\u{202f}AM GMT-03:00")
+    );
+    assert_eq!(c1_evs[0].timestamp.as_deref(), Some("2026-10-06T14:00:00Z"));
+    // User content has prompt text without boilerplate
+    let u1_text = c1_evs[0]
+        .content
+        .iter()
+        .find_map(|p| match p {
+            Part::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(u1_text, "first question with attachment");
+    assert!(!u1_text.contains("1 attachment"));
+    assert!(!u1_text.contains("diagram.png"));
+
+    // User content has attachment
+    assert!(c1_evs[0].content.iter().any(|p| matches!(
+        p,
+        Part::Image { filename: Some(fname), source_ref: Some(sref), .. }
+            if fname == "diagram.png" && sref == "Takeout/My Activity/Gemini Apps/diagram.png"
+    )));
+
+    // Assistant Turn 1
+    assert_eq!(c1_evs[1].role, Role::Assistant);
+    assert_eq!(c1_evs[1].seq, 1);
+    assert_eq!(
+        c1_evs[1].timestamp, None,
+        "no invented wall-clock timestamp"
+    );
+    assert_eq!(
+        c1_evs[1]
+            .metadata
+            .get("parent_native_id")
+            .and_then(Value::as_str),
+        Some("gemini-app:conv_alpha:turn:0:user")
+    );
+    let a1_text = c1_evs[1]
+        .content
+        .iter()
+        .find_map(|p| match p {
+            Part::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .unwrap();
+    assert!(a1_text.contains("### Architecture"), "{a1_text}");
+    assert!(a1_text.contains("**formatted**"), "{a1_text}");
+    assert!(a1_text.contains("*italics*"), "{a1_text}");
+    assert!(a1_text.contains("[link](https://example.com)"), "{a1_text}");
+    assert!(a1_text.contains("- First item"), "{a1_text}");
+    assert!(a1_text.contains("1. Step one"), "{a1_text}");
+    assert!(a1_text.contains("| Name | Role |"), "{a1_text}");
+    assert!(a1_text.contains("```\nlet x = 42;\n```"), "{a1_text}");
+    assert!(a1_text.contains("> Note this quote"), "{a1_text}");
+
+    // Turn 2 User
+    assert_eq!(c1_evs[2].role, Role::User);
+    assert_eq!(c1_evs[2].seq, 2);
+    assert_eq!(
+        c1_evs[2].timestamp_original.as_deref(),
+        Some("Oct 6, 2026, 12:00:00\u{202f}PM GMT-03:00")
+    );
+    assert_eq!(c1_evs[2].timestamp.as_deref(), Some("2026-10-06T15:00:00Z"));
+    assert_eq!(
+        c1_evs[2]
+            .metadata
+            .get("parent_native_id")
+            .and_then(Value::as_str),
+        Some("gemini-app:conv_alpha:turn:0:model")
+    );
+
+    // Turn 2 User attachment normalized from photo.jpeg to photo.jpg
+    assert!(c1_evs[2].content.iter().any(|p| matches!(
+        p,
+        Part::Image { filename: Some(fname), source_ref: Some(sref), .. }
+            if fname == "photo.jpg" && sref == "Takeout/My Activity/Gemini Apps/photo.jpg"
+    )));
+
+    // Turn 2 Assistant
+    assert_eq!(c1_evs[3].role, Role::Assistant);
+    assert_eq!(c1_evs[3].seq, 3);
+    assert_eq!(c1_evs[3].timestamp, None);
+    assert_eq!(
+        c1_evs[3]
+            .metadata
+            .get("parent_native_id")
+            .and_then(Value::as_str),
+        Some("gemini-app:conv_alpha:turn:1:user")
+    );
+
+    // Portuguese conversation without app id
+    let c2_evs: Vec<_> = evs
+        .iter()
+        .filter(|e| {
+            e.metadata
+                .get("native_id")
+                .and_then(Value::as_str)
+                .map(|s| !s.contains("conv_alpha"))
+                .unwrap_or(false)
+        })
+        .collect();
+    assert_eq!(c2_evs.len(), 2);
+    assert_eq!(c2_evs[0].role, Role::User);
+    assert_eq!(c2_evs[0].timestamp.as_deref(), Some("2026-10-06T13:15:30Z"));
+    let u2_text = c2_evs[0]
+        .content
+        .iter()
+        .find_map(|p| match p {
+            Part::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(u2_text, "Como funciona a fotossíntese?");
+
+    // Attachment inventoried
+    assert_eq!(
+        inventory(&out, "diagram.png")[0],
+        ("gemini-activity-attachment".into(), "unsupported".into())
+    );
+    assert_eq!(
+        inventory(&out, "photo.jpg")[0],
+        ("gemini-activity-attachment".into(), "unsupported".into())
+    );
+
+    // Re-import idempotency
+    let re_log = import(&z, &out);
+    assert!(re_log.contains("events: 0 new, 6 duplicate"), "{re_log}");
+    assert_valid(&out);
+
+    // Verify convolith all and convolith all --harness preserve exact user -> assistant turn order
+    let (code1, all_out) = cli(&["all", out.to_str().unwrap(), "--stdout"]);
+    assert_eq!(code1, 0, "{all_out}");
+    assert!(all_out.contains("\"provider\":\"google\""), "{all_out}");
+    assert!(all_out.contains("\"application\":\"gemini\""), "{all_out}");
+
+    let target_cid = &c1_evs[0].conversation_id;
+    let all_c1: Vec<Value> = all_out
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter(|e| e.get("conversation_id").and_then(Value::as_str) == Some(target_cid))
+        .collect();
+    assert_eq!(all_c1.len(), 4);
+    assert_eq!(
+        (all_c1[0]["seq"].as_u64(), all_c1[0]["role"].as_str()),
+        (Some(0), Some("user"))
+    );
+    assert_eq!(
+        (all_c1[1]["seq"].as_u64(), all_c1[1]["role"].as_str()),
+        (Some(1), Some("assistant"))
+    );
+    assert_eq!(
+        (all_c1[2]["seq"].as_u64(), all_c1[2]["role"].as_str()),
+        (Some(2), Some("user"))
+    );
+    assert_eq!(
+        (all_c1[3]["seq"].as_u64(), all_c1[3]["role"].as_str()),
+        (Some(3), Some("assistant"))
+    );
+
+    let (code2, harness_out) = cli(&["all", "--harness", out.to_str().unwrap(), "--stdout"]);
+    assert_eq!(code2, 0, "{harness_out}");
+    assert!(
+        harness_out.contains("\"provider\":\"google\""),
+        "{harness_out}"
+    );
+    assert!(
+        harness_out.contains("\"application\":\"gemini\""),
+        "{harness_out}"
+    );
+
+    let h_c1: Vec<Value> = harness_out
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter(|e| {
+            e.get("schema") == Some(&json!("convolith.harness/v1"))
+                && e.get("conversation_id").and_then(Value::as_str) == Some(target_cid)
+        })
+        .collect();
+    assert_eq!(h_c1.len(), 4);
+    assert_eq!(
+        (h_c1[0]["seq"].as_u64(), h_c1[0]["role"].as_str()),
+        (Some(0), Some("user"))
+    );
+    assert_eq!(
+        (h_c1[1]["seq"].as_u64(), h_c1[1]["role"].as_str()),
+        (Some(1), Some("assistant"))
+    );
+    assert_eq!(
+        (h_c1[2]["seq"].as_u64(), h_c1[2]["role"].as_str()),
+        (Some(2), Some("user"))
+    );
+    assert_eq!(
+        (h_c1[3]["seq"].as_u64(), h_c1[3]["role"].as_str()),
+        (Some(3), Some("assistant"))
+    );
+}
+
+#[test]
+fn takeout_html_empty_or_no_turns_is_valid() {
+    let t = tmp("gem-html-empty");
     let z = t.join("takeout.zip");
     zip_of(
         &z,
         &[
             (
                 "Takeout/My Activity/Gemini Apps/MyActivity.html",
-                b"<html></html>".to_vec(),
+                b"<html><body><div class=\"mdl-grid\"></div></body></html>".to_vec(),
             ),
             (
                 &format!("{DIR}/conversation_9.txt"),
@@ -204,7 +554,53 @@ fn unknown_version_my_activity_html_is_inventoried() {
     import(&z, &out);
     assert_eq!(
         inventory(&out, "MyActivity.html")[0],
-        ("gemini-myactivity-html".into(), "unsupported".into())
+        ("gemini-myactivity-html".into(), "parsed".into())
+    );
+    assert_valid(&out);
+}
+
+#[test]
+fn takeout_html_upgrade_from_previously_unsupported_source() {
+    let t = tmp("gem-html-upgrade");
+    let out = t.join("out");
+
+    // First import: a zip with an existing conversation
+    let z1 = t.join("takeout_old.zip");
+    zip_of(
+        &z1,
+        &[(
+            &format!("{DIR}/conversation_1.txt"),
+            conversation(false).to_string().into_bytes(),
+        )],
+    );
+    import(&z1, &out);
+    assert_eq!(gem(&out).len(), 2);
+
+    // Now import a zip containing MyActivity.html with a new conversation
+    let z2 = t.join("takeout_new.zip");
+    let card = make_synthetic_takeout_card(
+        Some("upgraded_conv"),
+        "Prompted ",
+        "question after upgrade",
+        "Oct 6, 2026, 11:00:00\u{202f}AM GMT-03:00",
+        "<p>Answer after upgrade</p>",
+        None,
+    );
+    let full_html = format!("<html><body><div class=\"mdl-grid\">{card}</div></body></html>");
+    zip_of(
+        &z2,
+        &[(
+            "Takeout/My Activity/Gemini Apps/MyActivity.html",
+            full_html.into_bytes(),
+        )],
+    );
+    let log = import(&z2, &out);
+    assert!(log.contains("events: 2 new"), "{log}");
+    assert_valid(&out);
+    assert_eq!(gem(&out).len(), 4);
+    assert_eq!(
+        inventory(&out, "MyActivity.html")[0],
+        ("gemini-myactivity-html".into(), "parsed".into())
     );
 }
 

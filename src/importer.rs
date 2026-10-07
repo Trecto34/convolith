@@ -1777,6 +1777,7 @@ pub fn event_type_str(t: EventType) -> &'static str {
         EventType::Interruption => "interruption",
         EventType::Error => "error",
         EventType::Opaque => "opaque",
+        EventType::Control => "control",
     }
 }
 

@@ -169,7 +169,8 @@
         "agent_result",
         "interruption",
         "error",
-        "opaque"
+        "opaque",
+        "control"
       ]
     },
     "reasoning_visibility": {

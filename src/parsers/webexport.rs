@@ -58,7 +58,10 @@ pub fn iso_stamp(v: Option<&Value>) -> Stamp {
 
 /// Epoch-seconds number (fractional allowed) -> stamp.
 pub fn epoch_stamp(v: Option<&Value>) -> Stamp {
-    match v.and_then(Value::as_f64).filter(|t| t.is_finite()) {
+    match v
+        .and_then(Value::as_f64)
+        .filter(|t| t.is_finite() && *t > 0.0)
+    {
         Some(t) => Stamp::from_utc(
             // microsecond rounding: f64 cannot carry more at epoch magnitude
             Utc(t.floor() as i64 * 1_000_000_000 + ((t - t.floor()) * 1e6).round() as i64 * 1000),
@@ -130,10 +133,14 @@ pub fn known_unsupported(p: &Probe) -> Option<(&'static str, &'static str)> {
             "image referenced by a Gemini Takeout conversation turn; the conversation keeps the reference, the bytes are not imported",
         ));
     }
-    if name == "myactivity.html" && lower.contains("gemini") {
+    let lower_path = path.to_ascii_lowercase();
+    if lower_path.contains("gemini apps")
+        && !name.eq_ignore_ascii_case("myactivity.html")
+        && !name.eq_ignore_ascii_case("myactivity.json")
+    {
         return Some((
-            "gemini-myactivity-html",
-            "Gemini My Activity HTML export; request the JSON format in Takeout (only JSON is parsed)",
+            "gemini-activity-attachment",
+            "attachment or image in Gemini Apps activity; referenced by conversation cards",
         ));
     }
     if let Some(r) = super::perplexity::known_unsupported(p) {

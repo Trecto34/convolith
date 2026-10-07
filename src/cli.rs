@@ -89,7 +89,7 @@ pub enum Cmd {
         #[arg(long, value_parser = ["redact", "preserve"])]
         secret_policy: Option<String>,
     },
-    /// Export every event of ARCHIVE as one chronological JSONL stream (convolith.all/v1)
+    /// Export every event of ARCHIVE as one chronological JSONL stream (convolith.all/v1 or convolith.harness/v1)
     All {
         archive: PathBuf,
         /// Write to this file (atomically)
@@ -103,6 +103,15 @@ pub enum Cmd {
         /// Write JSONL to stdout (diagnostics go to stderr)
         #[arg(long)]
         stdout: bool,
+        /// Compact normalized interchange format for AI memory/agent harness (convolith.harness/v1)
+        #[arg(long)]
+        harness: bool,
+        /// Do not compress output with zstd
+        #[arg(long, visible_alias = "uncompressed", conflicts_with = "compress")]
+        no_compress: bool,
+        /// Force zstd compression
+        #[arg(long, conflicts_with = "no_compress")]
+        compress: bool,
     },
     /// Check a dataset; exit 1 on any FAIL
     Validate { dir: PathBuf },
@@ -280,10 +289,29 @@ pub fn run(cli: Cli) -> Result<i32> {
             archive,
             output,
             stdout,
+            harness,
+            no_compress,
+            compress,
         } => {
+            let should_compress = if no_compress {
+                false
+            } else if compress {
+                true
+            } else if let Some(ref o) = output {
+                let s = o.to_string_lossy();
+                s.ends_with(".zst") || s.ends_with(".zstd") || harness
+            } else {
+                compress
+            };
+
+            let opts = crate::all_export::ExportOptions {
+                harness,
+                compress: should_compress,
+            };
+
             let stats = match (output, stdout) {
-                (Some(o), false) => crate::all_export::export_to_file(&archive, &o)?,
-                _ => crate::all_export::export_to_stdout(&archive)?,
+                (Some(o), false) => crate::all_export::export_to_file(&archive, &o, opts)?,
+                _ => crate::all_export::export_to_stdout(&archive, opts)?,
             };
             eprintln!("{}", stats.summary());
             Ok(0)

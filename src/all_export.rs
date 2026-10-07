@@ -9,7 +9,7 @@
 //! dedup set and parent map), not the event content.
 
 use crate::dataset::{read_jsonl_zst, Layout};
-use crate::model::{Event, Part, ProvenanceRef};
+use crate::model::{Event, EventType, Part, ProvenanceRef};
 use crate::timeutil::{parse_rfc3339, TimestampConfidence};
 use anyhow::{bail, Context, Result};
 use rusqlite::{Connection, OpenFlags};
@@ -20,8 +20,16 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 pub const SCHEMA: &str = "convolith.all/v1";
+pub const HARNESS_SCHEMA: &str = "convolith.harness/v1";
+pub const HARNESS_CONVERSATION_SCHEMA: &str = "convolith.harness.conversation/v1";
 const CHUNK_BYTES: usize = 128 * 1024 * 1024;
 const MAX_RECORD: usize = 64 * 1024 * 1024;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExportOptions {
+    pub harness: bool,
+    pub compress: bool,
+}
 
 #[derive(Debug, Default)]
 pub struct AllStats {
@@ -254,6 +262,76 @@ impl Ledger {
         Ok(out)
     }
 
+    fn harness_conversations(&self, seen_conv_ids: &HashSet<String>) -> Result<Vec<Value>> {
+        let mut out = Vec::new();
+        let Some(c) = &self.conn else { return Ok(out) };
+        let mut st = c.prepare(
+            "select conversation_id, title, started_at, ended_at from conversation order by conversation_id",
+        )?;
+        let rows = st.query_map([], |r| {
+            let id: String = r.get(0)?;
+            let title: Option<String> = r.get(1)?;
+            let started_at: Option<String> = r.get(2)?;
+            let ended_at: Option<String> = r.get(3)?;
+            Ok((id, title, started_at, ended_at))
+        })?;
+        for r in rows {
+            let (id, title, started_at, ended_at) = r?;
+            if seen_conv_ids.contains(&id) {
+                let mut m = Map::new();
+                m.insert("schema".into(), json!(HARNESS_CONVERSATION_SCHEMA));
+                m.insert("conversation_id".into(), json!(id));
+                m.insert("title".into(), title.map_or(Value::Null, |s| json!(s)));
+                m.insert(
+                    "started_at".into(),
+                    started_at.map_or(Value::Null, |s| json!(s)),
+                );
+                m.insert(
+                    "ended_at".into(),
+                    ended_at.map_or(Value::Null, |s| json!(s)),
+                );
+                out.push(Value::Object(m));
+            }
+        }
+        Ok(out)
+    }
+
+    fn harness_refs(&self, e: &Event) -> Result<Vec<Value>> {
+        let mut v = Vec::new();
+        let mut seen = HashSet::new();
+        if let Some(c) = &self.conn {
+            let mut st = c.prepare_cached(
+                "select source_id, record_id
+                 from observation
+                 where event_id = ?1
+                 order by source_id, record_index, obs_id",
+            )?;
+            let rows = st.query_map([&e.event_id], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+            })?;
+            for r in rows {
+                let (sid, rid) = r?;
+                if seen.insert((sid.clone(), rid.clone())) {
+                    v.push(json!({
+                        "source_id": sid,
+                        "record_id": rid.map_or(Value::Null, |s| json!(s)),
+                    }));
+                }
+            }
+        }
+        if v.is_empty() {
+            for p in &e.provenance {
+                if seen.insert((p.source_id.clone(), p.record_id.clone())) {
+                    v.push(json!({
+                        "source_id": p.source_id,
+                        "record_id": p.record_id.as_ref().map_or(Value::Null, |s| json!(s)),
+                    }));
+                }
+            }
+        }
+        Ok(v)
+    }
+
     fn refs(&self, e: &Event) -> Result<Vec<Value>> {
         let Some(c) = &self.conn else {
             return Ok(e.provenance.iter().map(|p| shard_ref(e, p)).collect());
@@ -331,9 +409,31 @@ fn confidence(c: TimestampConfidence) -> (&'static str, u8) {
     }
 }
 
+fn resolve_anchor_ts(
+    e: &Event,
+    event_ts: &HashMap<String, (i64, u8)>,
+    parent_map: &HashMap<String, String>,
+) -> Option<(i64, u8)> {
+    let mut curr = parent_map.get(&e.event_id).map(String::as_str);
+    let mut hops = 0;
+    while let Some(pid) = curr {
+        if let Some(&ts_rank) = event_ts.get(pid) {
+            return Some(ts_rank);
+        }
+        hops += 1;
+        if hops > 20 {
+            break;
+        }
+        curr = parent_map.get(pid).map(String::as_str);
+    }
+    None
+}
+
 fn build(
     e: &Event,
     parents: &HashMap<(String, String), String>,
+    event_ts: &HashMap<String, (i64, u8)>,
+    parent_map: &HashMap<String, String>,
     convs: &HashMap<String, Value>,
     ledger: &Ledger,
     stats: &mut AllStats,
@@ -346,19 +446,23 @@ fn build(
         _ => (conf, rank),
     };
     *stats.confidence.entry(conf.into()).or_default() += 1;
-    let key = match ts {
-        Some(t) => Key(0, t.0, rank, String::new(), e.seq, e.event_id.clone()),
+    let anchor = match ts {
+        Some(t) => Some((t.0, rank)),
         None => {
             stats.null_timestamps += 1;
-            Key(
-                1,
-                0,
-                rank,
-                e.conversation_id.clone(),
-                e.seq,
-                e.event_id.clone(),
-            )
+            resolve_anchor_ts(e, event_ts, parent_map)
         }
+    };
+    let key = match anchor {
+        Some((t_ns, r)) => Key(0, t_ns, r, String::new(), e.seq, e.event_id.clone()),
+        None => Key(
+            1,
+            0,
+            rank,
+            e.conversation_id.clone(),
+            e.seq,
+            e.event_id.clone(),
+        ),
     };
     let parent = e.parent_event_id.clone().or_else(|| {
         let n = e.metadata.get("parent_native_id")?.as_str()?;
@@ -407,6 +511,148 @@ fn build(
     Ok((key.clone(), key.encode(&s)))
 }
 
+fn is_control_or_hidden(e: &Event) -> (bool, bool) {
+    let mut is_control = e.event_type == EventType::Control
+        || e.metadata.get("is_control").and_then(Value::as_bool) == Some(true)
+        || e.metadata.get("control").and_then(Value::as_bool) == Some(true)
+        || e.metadata.get("event_type").and_then(Value::as_str) == Some("control")
+        || e.metadata.get("custom_type").and_then(Value::as_str) == Some("control")
+        || e.metadata.get("type").and_then(Value::as_str) == Some("control");
+
+    for p in &e.content {
+        if let Some(txt) = p.as_text() {
+            let t = txt.trim_start();
+            if t.starts_with("<system-reminder>") || t.starts_with("<control>") {
+                is_control = true;
+                break;
+            }
+        }
+    }
+
+    let is_hidden = is_control
+        || e.metadata.get("hidden").and_then(Value::as_bool) == Some(true)
+        || e.metadata.get("is_hidden").and_then(Value::as_bool) == Some(true)
+        || e.metadata
+            .get("chatgpt_is_visually_hidden_from_conversation")
+            .and_then(Value::as_bool)
+            == Some(true)
+        || e.metadata
+            .get("is_visually_hidden_from_conversation")
+            .and_then(Value::as_bool)
+            == Some(true)
+        || e.metadata.get("display").and_then(Value::as_bool) == Some(false)
+        || e.metadata.get("display").and_then(Value::as_str) == Some("hidden")
+        || e.event_type == EventType::Compaction;
+
+    (is_control, is_hidden)
+}
+
+fn build_harness(
+    e: &Event,
+    parents: &HashMap<(String, String), String>,
+    event_ts: &HashMap<String, (i64, u8)>,
+    parent_map: &HashMap<String, String>,
+    ledger: &Ledger,
+    stats: &mut AllStats,
+) -> Result<(Key, String)> {
+    // Never convert missing/zero timestamps into Unix epoch.
+    let ts = e
+        .timestamp
+        .as_deref()
+        .and_then(parse_rfc3339)
+        .filter(|t| t.0 > 0);
+    let (conf, rank) = confidence(e.timestamp_confidence);
+    let (conf, rank) = match (ts, conf) {
+        (None, "exact" | "derived") => ("unknown", 5),
+        _ => (conf, rank),
+    };
+    *stats.confidence.entry(conf.into()).or_default() += 1;
+
+    let conv_session = format!(
+        "{}/{}",
+        e.conversation_id,
+        e.session_id.as_deref().unwrap_or("")
+    );
+    let anchor = match ts {
+        Some(t) => Some((t.0, rank)),
+        None => {
+            stats.null_timestamps += 1;
+            resolve_anchor_ts(e, event_ts, parent_map)
+        }
+    };
+    let key = match anchor {
+        Some((t_ns, r)) => Key(0, t_ns, r, conv_session, e.seq, e.event_id.clone()),
+        None => Key(1, 0, rank, conv_session, e.seq, e.event_id.clone()),
+    };
+
+    let parent = e.parent_event_id.clone().or_else(|| {
+        let n = e.metadata.get("parent_native_id")?.as_str()?;
+        parents
+            .get(&(e.conversation_id.clone(), n.to_string()))
+            .cloned()
+    });
+
+    let (is_control, hidden) = is_control_or_hidden(e);
+    let event_type_val = if is_control {
+        json!("control")
+    } else {
+        serde_json::to_value(e.event_type)?
+    };
+
+    let refs = ledger.harness_refs(e)?;
+
+    let has_workspace = e.machine_id.is_some()
+        || e.project_id.is_some()
+        || e.repository_id.is_some()
+        || e.worktree_id.is_some();
+
+    let mut obj = json!({
+        "schema": HARNESS_SCHEMA,
+        "event_id": e.event_id,
+        "conversation_id": e.conversation_id,
+        "session_id": opt(&e.session_id),
+        "parent_event_id": parent.map_or(Value::Null, |s| json!(s)),
+        "seq": e.seq,
+        "timestamp": ts.map(|t| fixed_nanos(t.to_rfc3339())).map_or(Value::Null, |s| json!(s)),
+        "timestamp_confidence": conf,
+        "role": e.role.as_str(),
+        "event_type": event_type_val,
+        "provider": e.provider,
+        "application": e.application,
+        "model": opt(&e.model),
+        "content": e.content.iter().map(block).collect::<Vec<_>>(),
+    });
+
+    if let Value::Object(ref mut m) = obj {
+        if has_workspace {
+            m.insert("machine_id".into(), opt(&e.machine_id));
+            m.insert("project_id".into(), opt(&e.project_id));
+            m.insert("repository_id".into(), opt(&e.repository_id));
+            m.insert("worktree_id".into(), opt(&e.worktree_id));
+        }
+        if let Some(ref b) = e.branch {
+            m.insert("branch".into(), json!(b));
+        }
+        if let Some(ref c) = e.commit {
+            m.insert("commit".into(), json!(c));
+        }
+        if let Some(ref a) = e.agent {
+            m.insert("agent".into(), json!(a));
+        }
+        let sub = subagent(&e.metadata);
+        if !sub.is_null() {
+            m.insert("subagent".into(), sub);
+        }
+        m.insert("hidden".into(), json!(hidden));
+        if !refs.is_empty() {
+            m.insert("source_refs".into(), json!(refs));
+        }
+    }
+
+    let s = serde_json::to_string(&obj)?;
+    Ok((key.clone(), key.encode(&s)))
+}
+
 /// Sort `chunk` and append its JSON lines to `w`, or spill it to a temp file.
 fn spill(chunk: &mut Vec<(Key, String)>, dir: &Path, n: usize) -> Result<PathBuf> {
     chunk.sort_by(|a, b| a.0.cmp(&b.0));
@@ -450,7 +696,12 @@ fn merge(runs: &[PathBuf], w: &mut dyn Write) -> Result<()> {
 }
 
 /// Write the export to `w`. `tmp_dir` hosts spill files (removed on exit).
-pub fn export(archive: &Path, w: &mut dyn Write, tmp_dir: &Path) -> Result<AllStats> {
+pub fn export(
+    archive: &Path,
+    w: &mut dyn Write,
+    tmp_dir: &Path,
+    opts: ExportOptions,
+) -> Result<AllStats> {
     let layout = Layout {
         root: archive.to_path_buf(),
     };
@@ -459,18 +710,60 @@ pub fn export(archive: &Path, w: &mut dyn Write, tmp_dir: &Path) -> Result<AllSt
     }
     let shards = shard_files(&layout)?;
     let ledger = Ledger::open(&layout)?;
-    let convs = ledger.conversations()?;
+    let convs = if opts.harness {
+        HashMap::new()
+    } else {
+        ledger.conversations()?
+    };
     let mut stats = AllStats::default();
 
     let mut parents = HashMap::new();
+    let mut seen_conv_ids = HashSet::new();
+    let mut event_ts: HashMap<String, (i64, u8)> = HashMap::new();
+    let mut raw_parents: Vec<(String, String, Option<String>, Option<String>)> = Vec::new();
     for_each_event(&shards, &mut AllStats::default(), |e| {
+        if opts.harness {
+            seen_conv_ids.insert(e.conversation_id.clone());
+        }
         if let Some(n) = e.metadata.get("native_id").and_then(Value::as_str) {
             parents
-                .entry((e.conversation_id, n.to_string()))
-                .or_insert(e.event_id);
+                .entry((e.conversation_id.clone(), n.to_string()))
+                .or_insert(e.event_id.clone());
         }
+        let ts = e
+            .timestamp
+            .as_deref()
+            .and_then(parse_rfc3339)
+            .filter(|t| !opts.harness || t.0 > 0);
+        let (_, rank) = confidence(e.timestamp_confidence);
+        if let Some(t) = ts {
+            event_ts.insert(e.event_id.clone(), (t.0, rank));
+        }
+        let p_nat = e
+            .metadata
+            .get("parent_native_id")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        raw_parents.push((e.event_id, e.conversation_id, e.parent_event_id, p_nat));
         Ok(())
     })?;
+
+    let mut parent_map: HashMap<String, String> = HashMap::new();
+    for (eid, cid, peid, pnid) in raw_parents {
+        let parent_id = peid.or_else(|| {
+            let n = pnid.as_deref()?;
+            parents.get(&(cid, n.to_string())).cloned()
+        });
+        if let Some(pid) = parent_id {
+            parent_map.insert(eid, pid);
+        }
+    }
+
+    let conv_records = if opts.harness {
+        ledger.harness_conversations(&seen_conv_ids)?
+    } else {
+        Vec::new()
+    };
 
     let mut seen = HashSet::new();
     let (mut chunk, mut bytes, mut runs) = (Vec::new(), 0usize, Vec::new());
@@ -482,7 +775,19 @@ pub fn export(archive: &Path, w: &mut dyn Write, tmp_dir: &Path) -> Result<AllSt
                 dups += 1;
                 return Ok(());
             }
-            let (k, l) = build(&e, &parents, &convs, &ledger, &mut inner)?;
+            let (k, l) = if opts.harness {
+                build_harness(&e, &parents, &event_ts, &parent_map, &ledger, &mut inner)?
+            } else {
+                build(
+                    &e,
+                    &parents,
+                    &event_ts,
+                    &parent_map,
+                    &convs,
+                    &ledger,
+                    &mut inner,
+                )?
+            };
             bytes += l.len();
             chunk.push((k, l));
             if bytes >= CHUNK_BYTES {
@@ -491,18 +796,38 @@ pub fn export(archive: &Path, w: &mut dyn Write, tmp_dir: &Path) -> Result<AllSt
             }
             Ok(())
         })?;
-        if runs.is_empty() {
-            chunk.sort_by(|a, b| a.0.cmp(&b.0));
-            for (_, l) in &chunk {
-                w.write_all(Key::decode(l)?.1.as_bytes())?;
-                w.write_all(b"\n")?;
+
+        let mut write_records = |w: &mut dyn Write| -> Result<()> {
+            if opts.harness {
+                for conv in &conv_records {
+                    let s = serde_json::to_string(conv)?;
+                    w.write_all(s.as_bytes())?;
+                    w.write_all(b"\n")?;
+                }
             }
+            if runs.is_empty() {
+                chunk.sort_by(|a, b| a.0.cmp(&b.0));
+                for (_, l) in &chunk {
+                    w.write_all(Key::decode(l)?.1.as_bytes())?;
+                    w.write_all(b"\n")?;
+                }
+            } else {
+                if !chunk.is_empty() {
+                    runs.push(spill(&mut chunk, tmp_dir, runs.len())?);
+                }
+                merge(&runs, w)?;
+            }
+            Ok(())
+        };
+
+        if opts.compress {
+            let mut enc = zstd::stream::write::Encoder::new(w, 3).context("create zstd encoder")?;
+            write_records(&mut enc)?;
+            enc.finish().context("finish zstd stream")?;
         } else {
-            if !chunk.is_empty() {
-                runs.push(spill(&mut chunk, tmp_dir, runs.len())?);
-            }
-            merge(&runs, w)?;
+            write_records(w)?;
         }
+
         Ok(())
     })();
     for p in &runs {
@@ -517,7 +842,7 @@ pub fn export(archive: &Path, w: &mut dyn Write, tmp_dir: &Path) -> Result<AllSt
 }
 
 /// `--output`: temp file next to the target, then rename.
-pub fn export_to_file(archive: &Path, out: &Path) -> Result<AllStats> {
+pub fn export_to_file(archive: &Path, out: &Path, opts: ExportOptions) -> Result<AllStats> {
     let dir = out
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -528,7 +853,7 @@ pub fn export_to_file(archive: &Path, out: &Path) -> Result<AllStats> {
     let tmp = out.with_file_name(name);
     let res = (|| {
         let mut w = BufWriter::new(std::fs::File::create(&tmp)?);
-        let s = export(archive, &mut w, dir)?;
+        let s = export(archive, &mut w, dir, opts)?;
         w.flush()?;
         w.get_ref().sync_all()?;
         Ok(s)
@@ -545,10 +870,10 @@ pub fn export_to_file(archive: &Path, out: &Path) -> Result<AllStats> {
     }
 }
 
-pub fn export_to_stdout(archive: &Path) -> Result<AllStats> {
+pub fn export_to_stdout(archive: &Path, opts: ExportOptions) -> Result<AllStats> {
     let out = std::io::stdout();
     let mut w = BufWriter::new(out.lock());
-    let s = export(archive, &mut w, &std::env::temp_dir())?;
+    let s = export(archive, &mut w, &std::env::temp_dir(), opts)?;
     w.flush()?;
     Ok(s)
 }

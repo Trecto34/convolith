@@ -57,7 +57,7 @@ Re-running is safe: duplicates are skipped, and `--resume` skips unchanged store
 |---|---|
 | `collect` | Auto-detect and import known stores: `--local --wsl --ssh HOST --all-machines --apps --dry-run --resume --deep` ([details](docs/COLLECT.md)) |
 | `import PATH... -o DIR` | Manual or forensic import of one or more files, folders, tarballs or export zips |
-| `all ARCHIVE` | Single chronological JSONL (`convolith.all/v1`) with `--output FILE` or `--stdout` |
+| `all ARCHIVE` | Single chronological JSONL (`convolith.all/v1`, or `--harness` for compact `convolith.harness/v1`) with `--output FILE` or `--stdout` |
 | `pack` / `unpack` | Whole archive ⇄ one `history.convolith` file (provenance included) |
 | `validate` | Verify checksums, provenance ledger and the import accounting identity |
 | `discover` / `inspect` / `parsers` | See what exists, which parser claims it, and why |
