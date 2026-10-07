@@ -7,6 +7,33 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 The canonical record shape carries its own `schema_version` (currently 1), which
 is independent of the crate version.
 
+## [0.2.0] - 2026-10-07
+
+### Added
+
+- `convolith collect` and local discovery for known stores across the host, WSL,
+  and SSH machines, with per-machine provenance and resumable collection.
+- `convolith all` for deterministic, chronological JSONL export of canonical
+  events, plus portable `pack` and `unpack` archive containers.
+- Web-export parsers for Claude, Claude Design, Perplexity, and Gemini Takeout;
+  ChatGPT export parsing now handles shards and richer metadata. Unsupported
+  export files are inventoried with reasons.
+- README and documentation updates covering supported exports, collection, and
+  current limitations.
+
+### Changed
+
+- ChatGPT event and conversation identities remain compatible with v0.1.0.
+- Collection narrows scans to known store inputs; tool output beyond the inline
+  limit is stored as an artifact linked to its event.
+
+### Fixed
+
+- Path normalization, private-key redaction, unsupported-source reporting,
+  timestamp validation, and ledger aggregate rebuilding.
+- Gemini/Antigravity collection rules, Unix path matching, and archive path
+  sanitization.
+
 ## [Unreleased]
 
 ### Added
@@ -201,7 +228,8 @@ First cut. Interfaces and the canonical format are still moving before 1.0.
 - Redaction is best-effort pattern matching, not sanitization.
 - Parsers have not been fuzzed continuously.
 
-[Unreleased]: https://github.com/example/convolith/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Trecto34/convolith/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Trecto34/convolith/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/example/convolith/releases/tag/v0.1.0
 # Unreleased
 
