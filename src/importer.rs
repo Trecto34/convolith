@@ -223,6 +223,7 @@ pub struct Importer {
     started_at: String,
     state: Rc<RefCell<ImportState>>,
     scratch: Option<Scratch>,
+    progress: Option<indicatif::ProgressBar>,
 }
 
 impl Importer {
@@ -262,7 +263,17 @@ impl Importer {
             started_at,
             state,
             scratch: None,
+            progress: None,
         })
+    }
+
+    pub fn set_progress(&mut self, progress: indicatif::ProgressBar) {
+        self.progress = Some(progress);
+    }
+
+    pub fn with_progress(mut self, progress: indicatif::ProgressBar) -> Self {
+        self.progress = Some(progress);
+        self
     }
 
     pub fn run_id(&self) -> &str {
@@ -283,6 +294,7 @@ impl Importer {
         let mut discover_stats = DiscoverStats::default();
         let mut roots = roots.to_vec();
         roots.sort();
+        roots.dedup();
         for root in &roots {
             let dog = DiscoverOptions {
                 max_depth: self.opts.max_depth,
@@ -302,10 +314,15 @@ impl Importer {
             let registry = &self.registry;
             let opts = self.opts.clone();
             let secrets = self.secrets.clone_for_thread();
+            let progress = self.progress.clone();
             let mut err: Option<anyhow::Error> = None;
             {
                 let mut on_source = |source: &Source, probe: &Probe| -> Result<()> {
-                    import_source(
+                    let display = source.display_path.clone();
+                    if let Some(pb) = &progress {
+                        pb.set_message(format!("importing {display}"));
+                    }
+                    let res = import_source(
                         registry,
                         &state,
                         &staging_cb,
@@ -315,7 +332,14 @@ impl Importer {
                         &secrets,
                         &self.cfg,
                         self.run.clone(),
-                    )
+                    );
+                    if let Some(pb) = &progress {
+                        crate::progress::inc_progress(pb);
+                        let st = state.borrow();
+                        let events = st.counts.records_imported + st.counts.records_duplicate;
+                        pb.set_message(format!("{display} ({events} events)"));
+                    }
+                    res
                 };
                 if let Err(e) = discover::walk_root(
                     root,
@@ -333,6 +357,10 @@ impl Importer {
             }
             // A root is a durability unit: everything parsed so far is committed.
             self.state.borrow_mut().ledger.flush()?;
+        }
+
+        if let Some(pb) = &self.progress {
+            pb.set_message("writing dataset aggregates and inventory...");
         }
 
         self.close_shard()?;

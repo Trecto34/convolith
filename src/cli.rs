@@ -29,15 +29,20 @@ pub struct Cli {
 pub enum Cmd {
     /// List the sources under PATH (or the well-known local stores) and the parser each would use
     Discover {
-        path: Option<PathBuf>,
+        #[arg(value_name = "PATH")]
+        paths: Vec<PathBuf>,
         #[arg(long)]
         local: bool,
     },
     /// Show how every parser sees one file or directory
-    Inspect { path: PathBuf },
+    Inspect {
+        #[arg(required = true, value_name = "PATH")]
+        paths: Vec<PathBuf>,
+    },
     /// Import PATH into a canonical dataset
     Import {
-        path: PathBuf,
+        #[arg(required = true, value_name = "PATH")]
+        paths: Vec<PathBuf>,
         #[arg(long, short)]
         output: PathBuf,
         #[arg(long)]
@@ -48,6 +53,12 @@ pub enum Cmd {
         secret_policy: Option<String>,
         #[arg(long)]
         config: Option<PathBuf>,
+        /// Disable the progress bar
+        #[arg(long)]
+        no_progress: bool,
+        /// Force display of the progress bar
+        #[arg(long, conflicts_with = "no_progress")]
+        progress: bool,
     },
     /// Find known AI stores on this machine / WSL distros / SSH hosts and import them
     Collect {
@@ -154,15 +165,29 @@ pub fn main() -> i32 {
 pub fn run(cli: Cli) -> Result<i32> {
     let registry = crate::parsers::registry();
     match cli.cmd {
-        Cmd::Discover { path, local } => discover_cmd(&registry, path, local),
-        Cmd::Inspect { path } => inspect(&registry, &path),
+        Cmd::Discover { paths, local } => discover_cmd(&registry, paths, local),
+        Cmd::Inspect { paths } => {
+            let mut last_code = 0;
+            for (i, path) in paths.iter().enumerate() {
+                if i > 0 {
+                    println!();
+                }
+                let code = inspect(&registry, path)?;
+                if code != 0 {
+                    last_code = code;
+                }
+            }
+            Ok(last_code)
+        }
         Cmd::Import {
-            path,
+            paths,
             output,
             resume,
             dry_run,
             secret_policy,
             config,
+            no_progress,
+            progress,
         } => {
             let cfg = match &config {
                 Some(p) => Config::load(p)?,
@@ -181,7 +206,8 @@ pub fn run(cli: Cli) -> Result<i32> {
                 ..Default::default()
             }
             .from_limits(&cfg.limits);
-            import(&registry, cfg, opts, &path)
+            let mode = crate::progress::ProgressMode::from_flags(progress, no_progress);
+            import(&registry, cfg, opts, &paths, mode)
         }
         Cmd::Collect {
             local,
@@ -226,7 +252,12 @@ pub fn run(cli: Cli) -> Result<i32> {
             if !dry_run {
                 println!("Deduplicating...");
                 if output.join("provenance").join("provenance.sqlite").exists() {
-                    let v = finalize(&output)?;
+                    let pb = crate::progress::create_import_progress(
+                        crate::progress::ProgressMode::Auto,
+                        None,
+                    );
+                    let v = finalize_with_progress(&output, Some(&pb))?;
+                    crate::progress::finish_progress(&pb, "done");
                     if !v.passed() {
                         print!("{}", v.summary());
                     }
@@ -336,10 +367,10 @@ pub fn run(cli: Cli) -> Result<i32> {
     }
 }
 
-fn discover_cmd(registry: &Registry, path: Option<PathBuf>, local: bool) -> Result<i32> {
-    let (roots, opts) = match (path, local) {
-        (Some(p), _) => (vec![p], DiscoverOptions::default()),
-        (None, true) => (
+fn discover_cmd(registry: &Registry, paths: Vec<PathBuf>, local: bool) -> Result<i32> {
+    let (roots, opts) = match (!paths.is_empty(), local) {
+        (true, _) => (paths, DiscoverOptions::default()),
+        (false, true) => (
             discover::local_roots()
                 .into_iter()
                 .map(|r| r.path)
@@ -350,7 +381,7 @@ fn discover_cmd(registry: &Registry, path: Option<PathBuf>, local: bool) -> Resu
                 ..Default::default()
             },
         ),
-        (None, false) => bail!("give a PATH or --local"),
+        (false, false) => bail!("give a PATH or --local"),
     };
     if roots.is_empty() {
         eprintln!("no local stores found");
@@ -409,7 +440,7 @@ fn discover_cmd(registry: &Registry, path: Option<PathBuf>, local: bool) -> Resu
 
 fn inspect(registry: &Registry, path: &Path) -> Result<i32> {
     if path.is_dir() {
-        return discover_cmd(registry, Some(path.to_path_buf()), false);
+        return discover_cmd(registry, vec![path.to_path_buf()], false);
     }
     let probe = discover::probe_file(path)?;
     println!("{} ({} bytes)", probe.full_path, probe.size);
@@ -433,12 +464,41 @@ fn import(
     registry_unused: &Registry,
     cfg: Config,
     opts: ImportOptions,
-    input: &Path,
+    inputs: &[PathBuf],
+    progress_mode: crate::progress::ProgressMode,
 ) -> Result<i32> {
     let _ = registry_unused;
     let (dry_run, output) = (opts.dry_run, opts.output.clone());
+
+    let total = if inputs.iter().all(|p| p.is_file()) {
+        Some(inputs.len() as u64)
+    } else {
+        None
+    };
+
+    let pb = crate::progress::create_import_progress(progress_mode, total);
     let mut importer = Importer::new(opts, cfg, crate::parsers::registry())?;
-    let stats = importer.import(&[input.to_path_buf()])?;
+    importer.set_progress(pb.clone());
+
+    let stats = importer.import(inputs)?;
+    if dry_run {
+        crate::progress::finish_progress(&pb, "done (dry run)");
+        println!(
+            "sources: {} candidate, {} supported, {} unsupported, {} failed; events: {} new, {} duplicate; parse errors: {}",
+            stats.candidate_sources,
+            stats.supported_sources,
+            stats.unsupported_sources,
+            stats.sources_failed,
+            stats.events_new,
+            stats.events_duplicate,
+            stats.parse_errors,
+        );
+        return Ok(0);
+    }
+
+    let v = finalize_with_progress(&output, Some(&pb))?;
+    crate::progress::finish_progress(&pb, "done");
+
     println!(
         "sources: {} candidate, {} supported, {} unsupported, {} failed; events: {} new, {} duplicate; parse errors: {}",
         stats.candidate_sources,
@@ -449,10 +509,6 @@ fn import(
         stats.events_duplicate,
         stats.parse_errors,
     );
-    if dry_run {
-        return Ok(0);
-    }
-    let v = finalize(&output)?;
     print!("{}", v.summary());
     Ok(if v.passed() { 0 } else { 1 })
 }
@@ -460,11 +516,33 @@ fn import(
 /// Everything after the importer: reports, README, schema copy, search index,
 /// checksums, validation.
 pub fn finalize(ds: &Path) -> Result<validate::ValidationReport> {
+    finalize_with_progress(ds, None)
+}
+
+pub fn finalize_with_progress(
+    ds: &Path,
+    pb: Option<&indicatif::ProgressBar>,
+) -> Result<validate::ValidationReport> {
+    if let Some(pb) = pb {
+        pb.set_message("generating reports...");
+    }
     report::generate(ds)?;
     write_readme(ds)?;
     copy_schema(ds)?;
+
+    if let Some(pb) = pb {
+        pb.set_message("rebuilding search index...");
+    }
     search::rebuild_index(ds)?;
+
+    if let Some(pb) = pb {
+        pb.set_message("writing checksums...");
+    }
     dataset::write_checksums(ds, &derived_files(ds))?;
+
+    if let Some(pb) = pb {
+        pb.set_message("validating dataset...");
+    }
     validate::validate(ds)
 }
 

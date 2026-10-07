@@ -799,8 +799,14 @@ fn collect_machine(
             ..Default::default()
         };
         let mut imp = Importer::new(opts, Config::default(), crate::parsers::registry())?;
+        let pb = crate::progress::create_import_progress(
+            crate::progress::ProgressMode::Auto,
+            Some(todo.len() as u64),
+        );
+        imp.set_progress(pb.clone());
         let read: Vec<PathBuf> = todo.iter().map(|t| t.1.clone()).collect();
         let imported = imp.import(&read)?;
+        crate::progress::finish_progress(&pb, &format!("{}: done", m.label));
         for (orig, ..) in &todo {
             if let Some(s) = state.roots.get_mut(&format!("{}|{orig}", m.id)) {
                 s.done = imported.sources_failed == 0;

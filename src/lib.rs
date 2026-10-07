@@ -19,6 +19,7 @@ pub mod model;
 pub mod pack;
 pub mod parser;
 pub mod parsers;
+pub mod progress;
 pub mod report;
 pub mod scratch;
 pub mod search;

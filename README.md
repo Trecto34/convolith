@@ -39,8 +39,8 @@ cargo build --release                      # target/release/convolith (Rust 1.75
 # 1. collect: known paths on this machine, every WSL distro, SSH hosts
 convolith collect --local --wsl --ssh user@host -o ./archive
 
-# 2. import official web exports (zip, folder, or bare JSON; provider auto-detected)
-convolith import ~/Downloads/chatgpt-export.zip -o ./archive
+# 2. import official web exports (zip, folder, or bare JSON; multiple files supported)
+convolith import ~/Downloads/chatgpt-export.zip ~/Downloads/claude-export.zip -o ./archive
 
 # 3. one chronological, deduplicated file
 convolith all ./archive --output convolith-all.jsonl      # or --stdout
@@ -56,15 +56,17 @@ Re-running is safe: duplicates are skipped, and `--resume` skips unchanged store
 | Command | Does |
 |---|---|
 | `collect` | Auto-detect and import known stores: `--local --wsl --ssh HOST --all-machines --apps --dry-run --resume --deep` ([details](docs/COLLECT.md)) |
-| `import PATH -o DIR` | Manual or forensic import of any file, folder, tarball or export zip |
+| `import PATH... -o DIR` | Manual or forensic import of one or more files, folders, tarballs or export zips |
 | `all ARCHIVE` | Single chronological JSONL (`convolith.all/v1`) with `--output FILE` or `--stdout` |
 | `pack` / `unpack` | Whole archive ⇄ one `history.convolith` file (provenance included) |
 | `validate` | Verify checksums, provenance ledger and the import accounting identity |
 | `discover` / `inspect` / `parsers` | See what exists, which parser claims it, and why |
 | `search` / `provenance` / `inspect-event` / `report` / `rebuild-index` | Query and maintain an archive |
 
+Import accepts one or more files or directories. An interactive terminal displays
+a live progress bar during source import and dataset finalization.
 Import flags: `--dry-run`, `--resume`, `--secret-policy redact|preserve` (default
-`redact`; originals are never touched), `--config <file>`.
+`redact`; originals are never touched), `--config <file>`, `--no-progress`, `--progress`.
 
 ## Guarantees
 

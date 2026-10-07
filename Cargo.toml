@@ -33,6 +33,7 @@ toml = "0.8"
 walkdir = "2"
 zip = { version = "2", default-features = false, features = ["deflate", "bzip2", "zstd", "time"] }
 zstd = "0.13"
+indicatif = "0.18.4"
 
 [dev-dependencies]
 proptest = "1"
