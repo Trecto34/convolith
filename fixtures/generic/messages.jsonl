@@ -1,0 +1,4 @@
+{"role":"user","content":"hello","id":"m1"}
+invalid json
+{"role":"assistant","text":"world"}
+{"content":"missing role"}

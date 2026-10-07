@@ -1,0 +1,4 @@
+{"type":"session","version":3,"id":"0199aa11-2222-7333-8444-555566667777","timestamp":"2026-05-01T10:00:00.000Z","cwd":"/home/demo/pi-proj"}
+{"type":"message","id":"a1b2c3d4","parentId":null,"message":{"role":"user","content":"list the files"}}
+{"type":"message","id":"b2c3d4e5","parentId":"a1b2c3d4","message":{"role":"assistant","content":[{"type":"thinking","thinking":"I should run ls."},{"type":"toolCall","id":"toolu_pi_001","name":"bash","arguments":{"command":"ls"}}],"api":"anthropic-messages","provider":"anthropic","model":"claude-sonnet-4-5","usage":{"input":10,"output":5},"stopReason":"toolUse"}}
+{"type":"message","id":"c3d4e5f6","parentId":"b2c3d4e5","message":{"role":"toolResult","toolCallId":"toolu_pi_001","toolName":"bash","content":[{"type":"text","text":"README.md\nsrc"}],"isError":false}}

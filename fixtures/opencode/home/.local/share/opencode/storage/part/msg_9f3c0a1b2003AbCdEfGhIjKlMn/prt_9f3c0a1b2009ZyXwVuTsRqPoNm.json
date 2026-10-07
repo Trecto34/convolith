@@ -1,0 +1,10 @@
+{
+  "id": "prt_9f3c0a1b2009ZyXwVuTsRqPoNm",
+  "sessionID": "ses_3f7a1c9d2ffeKq81ZxWvBnMcLd",
+  "messageID": "msg_9f3c0a1b2003AbCdEfGhIjKlMn",
+  "type": "patch",
+  "hash": "abc123",
+  "files": [
+    "hello.sh"
+  ]
+}

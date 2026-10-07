@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)build a release for, e.g. v0.1.0
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    env:
+      # Tag being released: the pushed tag, or the manually supplied one.
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo build --release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="convolith-${TAG}-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          cp "target/${{ matrix.target }}/release/convolith" "dist/$name/"
+          cp README.md LICENSE CHANGELOG.md "dist/$name/"
+          cp -r spec "dist/$name/spec"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          rm -rf "dist/$name"
+          ls -l dist
+
+      - name: Package (windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $name = "convolith-$env:TAG-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path "dist/$name" | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/convolith.exe" "dist/$name/"
+          Copy-Item README.md, LICENSE, CHANGELOG.md "dist/$name/"
+          Copy-Item spec "dist/$name/spec" -Recurse
+          Compress-Archive -Path "dist/$name" -DestinationPath "dist/$name.zip" -Force
+          Remove-Item "dist/$name" -Recurse -Force
+          Get-ChildItem dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: convolith-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  # Optional: a static Linux binary. Allowed to fail without failing the release,
+  # because musl needs extra toolchain pieces that can be unavailable on a runner.
+  build-musl:
+    name: build (x86_64-unknown-linux-musl, optional)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo build --release --target x86_64-unknown-linux-musl
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="convolith-${TAG}-x86_64-unknown-linux-musl"
+          mkdir -p "dist/$name"
+          cp target/x86_64-unknown-linux-musl/release/convolith "dist/$name/"
+          cp README.md LICENSE CHANGELOG.md "dist/$name/"
+          cp -r spec "dist/$name/spec"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          rm -rf "dist/$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: convolith-x86_64-unknown-linux-musl
+          path: dist/*
+          if-no-files-found: warn
+
+  release:
+    name: checksums + release
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA-256 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          rm -f SHA256SUMS
+          # Sorted, `<hash>  <name>` — verifiable with `sha256sum -c SHA256SUMS`.
+          find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort | while read -r f; do
+            sha256sum "$f"
+          done > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "$TAG" --generate-notes
+          fi

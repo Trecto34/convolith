@@ -1,0 +1,78 @@
+# Rust build and profiling output
+/target/
+**/*.rs.bk
+*.profraw
+*.profdata
+perf.data*
+
+# cargo-fuzz artifacts (keep fuzz targets and corpus inputs tracked)
+fuzz/target/
+fuzz/artifacts/
+
+# Convolith runtime archives and collection state
+archive/
+**/archive/
+archives/
+**/archives/
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+collect-state.json
+collect-staging/
+**/collect-staging/
+staging/
+**/staging/
+tmp/
+**/tmp/
+PARSE_ERRORS*
+checksums.sha256
+
+# Dataset dumps, exports, and runtime reports
+/dumps/
+**/dumps/
+/exports/
+**/exports/
+*.dump
+*.export
+*.log
+logs/
+**/logs/
+coverage/
+.coverage
+.prof/
+
+# Credentials and private keys
+.env*
+*.pem
+*.key
+id_*
+*.p12
+credentials*
+.ssh/
+**/.ssh/
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Worktrees and agent/tool state
+.polly/
+.claude/
+.codex/
+.opencode/
+.omp/
+.gemini/
+graphify-out/
+wt/
+
+# Preserve all synthetic parser fixtures, including paths that resemble runtime stores.
+!fixtures/
+!fixtures/**

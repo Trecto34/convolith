@@ -1,0 +1,11 @@
+{
+  "id": "prt_9f3c0a1b2003ZyXwVuTsRqPoNm",
+  "sessionID": "ses_3f7a1c9d2ffeKq81ZxWvBnMcLd",
+  "messageID": "msg_9f3c0a1b2002AbCdEfGhIjKlMn",
+  "type": "reasoning",
+  "text": "Need a shell script.",
+  "time": {
+    "start": 1777700003000,
+    "end": 1777700004000
+  }
+}

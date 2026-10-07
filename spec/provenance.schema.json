@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://convolith.example/spec/v1/provenance.schema.json",
+  "title": "convolith provenance observation v1",
+  "description": "One observation of a canonical event: which source record produced or corroborated it. Mirrors src/model.rs::ProvenanceRef and the ledger `observation` table (src/ledger.rs).",
+  "type": "object",
+  "required": [
+    "source_id",
+    "source_path",
+    "parser",
+    "parser_version",
+    "first_seen",
+    "import_run",
+    "identity_tier"
+  ],
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "pattern": "^src_[0-9a-f]{24}$",
+      "description": "Deterministic source id over (display path, container chain)."
+    },
+    "source_path": {
+      "type": "string",
+      "description": "Path as discovered, before any normalization. For a staged archive member this is `outer.tgz!/inner/path`."
+    },
+    "container_chain": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Full archive ancestry, outermost first, e.g. [\"server-backup.tar.gz\", \"home/user/.codex/session.jsonl\"]."
+    },
+    "record_index": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Zero-based index of the record inside the source (JSONL line, DB row, archive entry)."
+    },
+    "record_id": {
+      "type": "string",
+      "description": "Provider-native record id when the source carries one."
+    },
+    "parser": {
+      "type": "string",
+      "description": "Parser id that read the record, e.g. `claude_code`, `codex`, `chatgpt`, `generic_jsonl`."
+    },
+    "parser_version": {
+      "type": "string",
+      "description": "Parser API version; bumped whenever a parser changes the canonical output it produces."
+    },
+    "source_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 of the source bytes this observation was read from, when hashed."
+    },
+    "first_seen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this source record was first imported."
+    },
+    "import_run": {
+      "type": "string",
+      "pattern": "^run_[0-9a-f]{12}$",
+      "description": "Import run that recorded this observation."
+    },
+    "identity_tier": {
+      "type": "string",
+      "enum": ["native", "coordinates", "fingerprint"],
+      "description": "Identity tier that established this observation. `native` = globally unique provider id; `coordinates` = provider-local id or stable position within the conversation; `fingerprint` = conversation + sequence + role + content fingerprint."
+    }
+  }
+}

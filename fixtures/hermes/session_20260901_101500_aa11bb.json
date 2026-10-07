@@ -1,0 +1,50 @@
+{
+  "session_id": "20260901_101500_aa11bb",
+  "model": "claude-sonnet-4-5",
+  "base_url": "https://api.anthropic.com",
+  "platform": "cli",
+  "session_start": "2026-09-01T10:15:00.123456",
+  "last_updated": "2026-09-01T10:15:30Z",
+  "system_prompt": "You are Hermes.",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "terminal"
+      }
+    }
+  ],
+  "message_count": 4,
+  "messages": [
+    {
+      "role": "user",
+      "content": "what is 2+2?"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_json_1",
+          "type": "function",
+          "function": {
+            "name": "calculator",
+            "arguments": "{\"expr\":\"2+2\"}"
+          }
+        }
+      ],
+      "finish_reason": "tool_calls"
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_json_1",
+      "content": "4"
+    },
+    {
+      "role": "assistant",
+      "content": "4",
+      "finish_reason": "stop"
+    },
+    "bad"
+  ]
+}

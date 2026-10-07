@@ -1,0 +1,6 @@
+{"type":"session","version":4,"id":"5c1f2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f","createdAt":1790900000000,"cwd":"/home/demo/proj","isSeeded":false,"delegationDepth":0,"agentPreset":"default"}
+{"type":"user/message","seq":4,"time":1790900000400,"data":{"content":[{"type":"text","text":"fix the bug"}],"source":{"kind":"user"},"role":"user","id":"0199aa11-0000-7000-8000-000000000001"},"surfaceOp":"append"}
+{broken
+[1]
+{"seq":1}
+{"type":"assistant/message","seq":7,"time":1790900000700,"data":{"turn":1,"step":1,"message":{"role":"assistant","content":[{"type":"reasoning","text":"look at the tests"},{"type":"text","text":"Running the tests."},{"type":"tool-call","id":"call_a1","name":"bash","arguments":"{\"command\":\"cargo test\"}"}],"source":{"kind":"model","provider":"deepseek","model":"deepseek-v4","replayState":{"blocks":[]}},"id":"0199aa11-0000-7000-8000-000000000002"},"usage":{"inputTokens":10,"outputTokens":5,"totalTokens":15},"stream":[{"type":"chunk","time":1790900000000}]},"surfaceOp":"append"}

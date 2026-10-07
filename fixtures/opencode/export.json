@@ -1,0 +1,58 @@
+{
+  "info": {
+    "id": "ses_7b2e4d6f8ffeLm93AaSsDdFfGg",
+    "version": "1.17.20",
+    "projectID": "global",
+    "directory": "/home/demo/exp",
+    "title": "Exported",
+    "time": {
+      "created": 1777800000000,
+      "updated": 1777800005000
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "id": "msg_7b2e4d6f8001QqWwEeRrTtYyUu",
+        "sessionID": "ses_7b2e4d6f8ffeLm93AaSsDdFfGg",
+        "role": "user",
+        "time": {
+          "created": 1777800001000
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "openai",
+          "modelID": "gpt-5"
+        }
+      },
+      "parts": [
+        {
+          "id": "prt_7b2e4d6f8001QqWwEeRrTtYyUu",
+          "type": "text",
+          "text": "hello export"
+        }
+      ]
+    },
+    {
+      "info": {
+        "id": "msg_7b2e4d6f8002QqWwEeRrTtYyUu",
+        "sessionID": "ses_7b2e4d6f8ffeLm93AaSsDdFfGg",
+        "role": "assistant",
+        "parentID": "msg_7b2e4d6f8001QqWwEeRrTtYyUu",
+        "time": {
+          "created": 1777800002000
+        },
+        "modelID": "gpt-5",
+        "providerID": "openai"
+      },
+      "parts": [
+        {
+          "id": "prt_7b2e4d6f8002QqWwEeRrTtYyUu",
+          "type": "text",
+          "text": "hi back"
+        }
+      ]
+    },
+    "not an object"
+  ]
+}

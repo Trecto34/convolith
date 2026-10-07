@@ -1,0 +1,7 @@
+{"parentUuid":null,"isSidechain":false,"userType":"external","cwd":"/home/demo/proj","sessionId":"66666666-6666-4666-8666-666666666666","version":"2.1.0","gitBranch":"main","uuid":"c0000041-0000-4000-8000-000000000041","timestamp":"2026-03-03T08:00:00.000Z","type":"user","message":{"role":"user","content":"before the damage"}}
+{"type":"user","message":{"role":"user","content":"trunc
+
+[1,2,3]
+{"no_type":true,"sessionId":"66666666-6666-4666-8666-666666666666"}
+{"type":"user","uuid":"c0000042-0000-4000-8000-000000000042","sessionId":"66666666-6666-4666-8666-666666666666","parentUuid":"c0000041-0000-4000-8000-000000000041","timestamp":"2026-03-03T08:00:01.000Z"}
+{"parentUuid":"c0000041-0000-4000-8000-000000000041","isSidechain":false,"userType":"external","cwd":"/home/demo/proj","sessionId":"66666666-6666-4666-8666-666666666666","version":"2.1.0","gitBranch":"main","uuid":"c0000043-0000-4000-8000-000000000043","timestamp":"2026-03-03T08:00:02.000Z","type":"assistant","requestId":"req_s6a","message":{"id":"msg_s6a","type":"message","role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"after the damage"}],"stop_reason":"end_turn","usage":{"input_tokens":5,"output_tokens":7}}}

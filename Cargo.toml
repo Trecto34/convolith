@@ -1,0 +1,44 @@
+[package]
+name = "convolith"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Loss-preserving, provenance-first canonicalizer for fragmented AI conversation history"
+license = "MIT"
+repository = "https://github.com/example/convolith"
+readme = "README.md"
+keywords = ["archive", "ai", "history", "forensics", "canonical"]
+categories = ["command-line-utilities", "filesystem"]
+
+[[bin]]
+name = "convolith"
+path = "src/main.rs"
+
+[lib]
+name = "convolith"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+blake3 = "1"
+clap = { version = "4", features = ["derive"] }
+flate2 = "1"
+regex = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tar = "0.4"
+toml = "0.8"
+walkdir = "2"
+zip = { version = "2", default-features = false, features = ["deflate", "bzip2", "zstd", "time"] }
+zstd = "0.13"
+
+[dev-dependencies]
+proptest = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true

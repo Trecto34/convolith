@@ -1,0 +1,6 @@
+{"sessionId":"0b7c1d2e-3f40-4a51-8b62-73c84d95e6f2","projectHash":"9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08","startTime":"2026-02-03T10:00:00.000Z","lastUpdated":"2026-02-03T10:00:00.000Z","kind":"main"}
+{"id":"33333333-aaaa-4bbb-8ccc-000000000001","timestamp":"2026-02-03T10:00:05.000Z","type":"user","content":[{"text":"list the files"}]}
+{this is not json
+[1,2,3]
+{"id":"33333333-aaaa-4bbb-8ccc-000000000004","timestamp":"2026-02-03T10:00:20.000Z","type":"info","content":"Request cancelled."}
+{"id":"33333333-aaaa-4bbb-8ccc-0000000000ff","timestamp":"2026-02-03T10:00:50.000Z","content":"no type"}

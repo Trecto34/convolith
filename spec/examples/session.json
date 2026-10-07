@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "session_id": "se_9f8e7d6c5b4a39281706f5e4",
+  "conversation_id": "cv_1a2b3c4d5e6f7081920a1b2c",
+  "provider": "anthropic",
+  "application": "claude-code",
+  "title": "main",
+  "agent": "main",
+  "machine_id": "workstation",
+  "project_id": "prj_0123456789abcdef01234567",
+  "working_directory": "/home/user/src/app",
+  "started_at": "2024-11-05T12:30:00Z",
+  "ended_at": "2024-11-05T13:10:00Z",
+  "event_count": 42,
+  "source_ids": [
+    "src_aabbccddeeff001122334455"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "prt_9f3c0a1b2007ZyXwVuTsRqPoNm",
+  "sessionID": "ses_3f7a1c9d2ffeKq81ZxWvBnMcLd",
+  "messageID": "msg_9f3c0a1b2002AbCdEfGhIjKlMn",
+  "type": "step-finish",
+  "reason": "tool-calls",
+  "cost": 0.01,
+  "tokens": {
+    "input": 100,
+    "output": 20
+  }
+}

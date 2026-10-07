@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "event_id": "ev_7c1f0ab9d2e3456789abcdef",
+  "conversation_id": "cv_1a2b3c4d5e6f7081920a1b2c",
+  "session_id": "se_9f8e7d6c5b4a39281706f5e4",
+  "seq": 3,
+  "timestamp": "2024-11-05T12:34:56.789Z",
+  "timestamp_confidence": "exact",
+  "role": "assistant",
+  "event_type": "message",
+  "provider": "anthropic",
+  "application": "claude-code",
+  "model": "claude-sonnet-4-5",
+  "machine_id": "workstation",
+  "project_id": "prj_0123456789abcdef01234567",
+  "working_directory": "/home/user/src/app",
+  "branch": "main",
+  "content": [
+    {
+      "type": "text",
+      "text": "The failing check is in the retry path; I patched it and reran the suite."
+    },
+    {
+      "type": "tool_call",
+      "id": "toolu_01A2B3C4D5E6F7G8H9I0J1K2",
+      "name": "Bash",
+      "arguments": {
+        "command": "cargo test --quiet",
+        "description": "run tests"
+      }
+    }
+  ],
+  "metadata": {
+    "message_id": "msg_01XyZ",
+    "stop_reason": "end_turn",
+    "usage": {
+      "input_tokens": 812,
+      "output_tokens": 96
+    }
+  },
+  "redactions": [
+    {
+      "kind": "openai_key",
+      "count": 1,
+      "field": "content[0].text"
+    }
+  ],
+  "provenance": [
+    {
+      "source_id": "src_aabbccddeeff001122334455",
+      "source_path": "/home/user/.claude/projects/home-user-src-app/session-abc.jsonl",
+      "container_chain": [],
+      "record_index": 7,
+      "record_id": "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
+      "parser": "claude_code",
+      "parser_version": "1",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "first_seen": "2024-12-01T08:00:00Z",
+      "import_run": "run_0123456789ab",
+      "identity_tier": "native"
+    }
+  ]
+}

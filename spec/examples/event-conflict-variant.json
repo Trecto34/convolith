@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "event_id": "ev_4d5e6f7081920a1b2c3d4e5f",
+  "conversation_id": "cv_1a2b3c4d5e6f7081920a1b2c",
+  "seq": 8,
+  "timestamp": "2024-11-06T09:00:00Z",
+  "timestamp_original": "2024-11-06 09:00:00 +0000",
+  "timestamp_confidence": "exact",
+  "role": "user",
+  "event_type": "message",
+  "provider": "openai",
+  "application": "codex",
+  "content": [
+    {
+      "type": "reasoning",
+      "text": "The user is asking for the same file twice; I will read it once.",
+      "visibility": "summary"
+    },
+    {
+      "type": "opaque",
+      "kind": "encrypted_reasoning",
+      "note": "vendor-encrypted reasoning blob preserved verbatim, never decoded"
+    },
+    {
+      "type": "text",
+      "text": "Reading the file once and summarizing."
+    }
+  ],
+  "metadata": {
+    "variant_of": "ev_00112233445566778899aabb",
+    "conflict_existing_content_fp": "9f8e7d6c5b4a39281706f5e4d3c2b1a099887766554433221100ffee"
+  },
+  "provenance": [
+    {
+      "source_id": "src_ffeeddccbbaa998877665544",
+      "source_path": "server-backup.tar.gz!/home/u/.codex/sessions/2024/11/06/rollout-2024-11-06T09-00-00-abc.jsonl",
+      "container_chain": [
+        "server-backup.tar.gz",
+        "home/u/.codex/sessions/2024/11/06/rollout-2024-11-06T09-00-00-abc.jsonl"
+      ],
+      "record_index": 12,
+      "record_id": "msg_1",
+      "parser": "codex",
+      "parser_version": "1",
+      "first_seen": "2024-12-01T08:05:00Z",
+      "import_run": "run_0123456789ab",
+      "identity_tier": "coordinates"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "conversation_id": "cv_1a2b3c4d5e6f7081920a1b2c",
+  "session_id": "se_9f8e7d6c5b4a39281706f5e4",
+  "provider": "anthropic",
+  "application": "claude-code",
+  "title": "Fix the retry path",
+  "model": "claude-sonnet-4-5",
+  "agent": "main",
+  "machine_id": "workstation",
+  "project_id": "prj_0123456789abcdef01234567",
+  "repository_id": "repo_abcdef0123456789abcdef01",
+  "working_directory": "/home/user/src/app",
+  "started_at": "2024-11-05T12:30:00Z",
+  "ended_at": "2024-11-05T13:10:00Z",
+  "event_count": 42,
+  "source_ids": [
+    "src_aabbccddeeff001122334455"
+  ],
+  "metadata": {
+    "is_sidechain": false,
+    "leaf_uuid": "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0"
+  }
+}

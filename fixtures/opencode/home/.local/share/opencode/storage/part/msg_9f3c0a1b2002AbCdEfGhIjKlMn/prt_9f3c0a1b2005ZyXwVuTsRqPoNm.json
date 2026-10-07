@@ -1,0 +1,19 @@
+{
+  "id": "prt_9f3c0a1b2005ZyXwVuTsRqPoNm",
+  "sessionID": "ses_3f7a1c9d2ffeKq81ZxWvBnMcLd",
+  "messageID": "msg_9f3c0a1b2002AbCdEfGhIjKlMn",
+  "type": "tool",
+  "callID": "toolu_oc_002",
+  "tool": "bash",
+  "state": {
+    "status": "error",
+    "input": {
+      "command": "./hello.sh"
+    },
+    "error": "permission denied",
+    "time": {
+      "start": 1777700007000,
+      "end": 1777700008000
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "artifact_id": "art_5f4e3d2c1b0a998877665544",
+  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "size": 20480,
+  "mime": "text/plain",
+  "filename": "tool-output.txt",
+  "source_path": "/home/user/.claude/projects/home-user-src-app/session-abc.jsonl",
+  "event_ids": [
+    "ev_7c1f0ab9d2e3456789abcdef"
+  ],
+  "stored_path": "sha256/e3/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

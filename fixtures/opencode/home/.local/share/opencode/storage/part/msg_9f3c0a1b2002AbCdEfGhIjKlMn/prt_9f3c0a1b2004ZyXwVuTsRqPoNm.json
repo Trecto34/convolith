@@ -1,0 +1,22 @@
+{
+  "id": "prt_9f3c0a1b2004ZyXwVuTsRqPoNm",
+  "sessionID": "ses_3f7a1c9d2ffeKq81ZxWvBnMcLd",
+  "messageID": "msg_9f3c0a1b2002AbCdEfGhIjKlMn",
+  "type": "tool",
+  "callID": "toolu_oc_001",
+  "tool": "write",
+  "state": {
+    "status": "completed",
+    "input": {
+      "filePath": "hello.sh",
+      "content": "echo hi\n"
+    },
+    "output": "Wrote file successfully.",
+    "title": "hello.sh",
+    "metadata": {},
+    "time": {
+      "start": 1777700005000,
+      "end": 1777700006000
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{"timestamp":"2026-04-01T10:00:00.000Z","ordinal":0,"type":"session_meta","payload":{"id":"019a0001-aaaa-7bbb-8ccc-000000000001","timestamp":"2026-04-01T10:00:00.000Z","cwd":"/home/demo/proj","originator":"codex_cli_rs","cli_version":"0.1.0","source":"cli","model_provider":"openai","base_instructions":{"text":"You are a coding agent."},"git":{"commit_hash":"0123456789abcdef0123456789abcdef01234567","branch":"main","repository_url":"https://example.invalid/demo.git"}}}
+{"timestamp":"2026-04-01T10:00:01.000Z","ordinal":1,"type":"turn_context","payload":{"cwd":"/home/demo/proj","model":"gpt-5-codex","effort":"medium","approval_policy":"on-request"}}
+{"timestamp":"2026-04-01T10:00:02.000Z","ordinal":2,"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Hello Codex"}]}}
+{"timestamp":"2026-04-01T10:00:02.005Z","type":"event_msg","payload":{"type":"user_message","message":"Hello Codex"}}
+{"timestamp":"2026-04-01T10:00:03.000Z","ordinal":3,"type":"response_item","payload":{"type":"reasoning","id":"rs_019a0001-0000-7000-8000-000000000001","summary":[{"type":"summary_text","text":"Greeting the user"}],"encrypted_content":"gAAAAABfake-encrypted-blob"}}
+{"timestamp":"2026-04-01T10:00:04.000Z","ordinal":4,"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hi! What shall we build?"}],"id":"msg_019a0001-0000-7000-8000-000000000002"}}
+{"timestamp":"2026-04-01T10:00:04.005Z","type":"event_msg","payload":{"type":"agent_message","message":"Hi! What shall we build?"}}
+{"timestamp":"2026-04-01T10:00:05.000Z","type":"event_msg","payload":{"type":"token_count","info":null}}
+{"timestamp":"2026-04-01T10:00:05.000Z","type":"token_usage_record","payload":{"usage":{"total":12}}}

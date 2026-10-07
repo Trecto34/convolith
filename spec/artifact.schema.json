@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://convolith.example/spec/v1/artifact.schema.json",
+  "title": "convolith artifact record v1",
+  "description": "One immutable stored artifact, content-addressed by SHA-256. Mirrors src/model.rs::ArtifactRecord and the ledger `artifact_ref` table (src/ledger.rs).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "artifact_id",
+    "sha256",
+    "size",
+    "stored_path"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "artifact_id": {
+      "type": "string",
+      "pattern": "^art_[0-9a-f]{24}$",
+      "description": "Deterministic id over the SHA-256 digest: `art_` + first 24 hex chars of BLAKE3(\"sha256\", <digest>)."
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 of the stored bytes. Identical bytes are stored once."
+    },
+    "size": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "mime": {
+      "type": "string",
+      "description": "Optional; guessed from the filename when the caller passes none."
+    },
+    "filename": { "type": "string" },
+    "source_path": {
+      "type": "string",
+      "description": "Where the bytes were seen, as discovered."
+    },
+    "event_ids": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^ev_[0-9a-f]{24}$" }
+    },
+    "copied": {
+      "type": "boolean",
+      "default": true,
+      "description": "Absent means true. False when the payload exceeded the artifact limit: hash and size are recorded, the bytes are not in the store."
+    },
+    "stored_path": {
+      "type": "string",
+      "pattern": "^sha256/[0-9a-f]{2}/[0-9a-f]{64}$",
+      "description": "Relative path inside the dataset: artifacts/<stored_path>. A payload larger than the artifact limit is hashed and reported but not copied, so the file may legitimately be absent."
+    }
+  }
+}

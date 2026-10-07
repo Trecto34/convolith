@@ -1,0 +1,5 @@
+{"type":"title","v":1,"title":"Fix the build"}                                                                                                                                                                                                                 
+{"type":"session","version":3,"id":"0199bb22-3333-7444-8555-666677778888","timestamp":"2026-05-02T09:00:00.000Z","cwd":"/home/demo/omp-proj"}
+{"type":"message","id":"11aa22bb","parentId":null,"timestamp":"2026-05-02T09:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"why does the build fail?"}]}}
+{"type":"message","id":"22bb33cc","parentId":"11aa22bb","timestamp":"2026-05-02T09:00:02.000Z","message":{"role":"assistant","content":[{"type":"text","text":"A missing import."}],"model":"gpt-5","provider":"openai","stopReason":"stop"}}
+{"type":"mode_change","id":"33cc44dd","parentId":"22bb33cc","timestamp":"2026-05-02T09:00:03.000Z","mode":"plan"}

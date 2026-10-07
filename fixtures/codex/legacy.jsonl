@@ -1,0 +1,6 @@
+{"id":"019a0008-aaaa-7bbb-8ccc-000000000008","timestamp":"2025-08-01T10:00:00.000Z","instructions":"Legacy instructions."}
+{"type":"message","role":"user","content":[{"type":"input_text","text":"legacy hello"}]}
+{"type":"function_call","name":"shell","arguments":"{\"command\":[\"pwd\"]}","call_id":"call_legacy0000000000001"}
+{"type":"function_call_output","call_id":"call_legacy0000000000001","output":"{\"output\":\"/tmp\\n\",\"metadata\":{\"exit_code\":0}}"}
+{"record_type":"state"}
+{"type":"message","role":"assistant","content":[{"type":"output_text","text":"legacy reply"}]}

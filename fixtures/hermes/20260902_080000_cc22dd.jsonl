@@ -1,0 +1,4 @@
+{"role":"session_meta","tools":[{"name":"terminal"}],"model":"gpt-5","platform":"telegram","timestamp":"2026-09-02T08:00:00.000000"}
+{"role":"user","content":"ping","timestamp":"2026-09-02T08:00:01.000000"}
+{broken json
+{"role":"assistant","content":"pong","timestamp":"2026-09-02T08:00:02Z"}

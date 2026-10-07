@@ -1,0 +1,16 @@
+{
+  "source_id": "src_aabbccddeeff001122334455",
+  "source_path": "server-backup.tar.gz!/home/u/.codex/sessions/2024/11/06/rollout-abc.jsonl",
+  "container_chain": [
+    "server-backup.tar.gz",
+    "home/u/.codex/sessions/2024/11/06/rollout-abc.jsonl"
+  ],
+  "record_index": 12,
+  "record_id": "msg_1",
+  "parser": "codex",
+  "parser_version": "1",
+  "source_sha256": "6fb92427ae41e4649b934ca495991b7852b855e3b0c44298fc1c149afbf4c899",
+  "first_seen": "2024-12-01T08:05:00Z",
+  "import_run": "run_0123456789ab",
+  "identity_tier": "coordinates"
+}

@@ -1,0 +1,11 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc bab9c4f2733cb431c8aadad0533b3076d3a135b87e101bb23c8deaf451053f54 # shrinks to y = 2262, mo = 4, d = 12
+cc 0f94b0f6b9d1fa54e3bf6dbf69cc80271d4bc5d50eca1167fa59ea5521725e74 # shrinks to bytes = [0]
+cc 6aa3fa0f83df336752527d0164aca419621c9c09976bb9b448c77c9b2e14d2ad # shrinks to e = Event { schema_version: 1, event_id: "", conversation_id: "", session_id: None, parent_event_id: None, seq: 0, timestamp: None, timestamp_original: None, timestamp_confidence: Exact, role: User, event_type: Message, provider: "", application: "", model: None, agent: None, machine_id: None, project_id: None, repository_id: None, working_directory: None, branch: None, commit: None, worktree_id: None, content: [Opaque { kind: "", note: None, raw: Some(Null) }], metadata: {}, redactions: [], provenance: [] }
+cc cc2e87ae5bd7288d46bae2499775c16c403f5396bd3b44f0654f89df5f9ac2df # shrinks to name = "./C:"
+cc 1482c06ebea006fc830511721ca9465f3c1ed9daf0c48c960ed82dea13e7d34d # shrinks to bytes = [11]

@@ -1,0 +1,6 @@
+{"message_id":"msg-user-v1-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","turn_id":"turn_a","message":{"role":"user","content":[{"type":"text","text":"list the project files"}],"timestamp":1790850000000}}
+{not json
+[1,2]
+{"message_id":"msg-x","turn_id":"t","message":{}}
+{"turn_id":"t"}
+{"message_id":"msg-DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD","turn_id":"turn_a","message":{"role":"assistant","content":[{"type":"text","text":"There is a README and a src directory."}],"timestamp":1790850003000,"model":"best","provider":"custom_provider:demo","stopReason":"stop"}}

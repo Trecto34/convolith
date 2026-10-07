@@ -1,0 +1,319 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://convolith.example/spec/v1/event.schema.json",
+  "title": "convolith canonical event v1",
+  "description": "One canonical event as written to data/events/part-NNNNNN.jsonl.zst. Mirrors src/model.rs::Event (SCHEMA_VERSION = 1).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_id",
+    "conversation_id",
+    "seq",
+    "timestamp_confidence",
+    "role",
+    "event_type",
+    "provider",
+    "application",
+    "content",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "Canonical schema version."
+    },
+    "event_id": {
+      "$ref": "#/$defs/canonical_id",
+      "description": "Deterministic event id, `ev_` + 24 lowercase hex chars."
+    },
+    "conversation_id": {
+      "$ref": "#/$defs/conversation_id"
+    },
+    "session_id": {
+      "$ref": "#/$defs/session_id"
+    },
+    "parent_event_id": {
+      "$ref": "#/$defs/canonical_id",
+      "description": "Parent event when the provider exposes a message tree. Source tree shape is preserved verbatim."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Zero-based order of this event inside its conversation as observed."
+    },
+    "timestamp": {
+      "$ref": "#/$defs/rfc3339_utc"
+    },
+    "timestamp_original": {
+      "type": "string",
+      "description": "Literal timestamp text found in the source, kept verbatim even when it cannot be parsed."
+    },
+    "timestamp_confidence": {
+      "$ref": "#/$defs/timestamp_confidence"
+    },
+    "role": {
+      "$ref": "#/$defs/role"
+    },
+    "event_type": {
+      "$ref": "#/$defs/event_type"
+    },
+    "provider": {
+      "type": "string",
+      "description": "Provider label, e.g. `anthropic`, `openai`, `unknown`."
+    },
+    "application": {
+      "type": "string",
+      "description": "Application label, e.g. `claude-code`, `codex`, `chatgpt-export`, `generic-jsonl`."
+    },
+    "model": {
+      "type": "string"
+    },
+    "agent": {
+      "type": "string"
+    },
+    "machine_id": {
+      "type": "string",
+      "description": "Operator-declared machine identity. Never derived from a path alone."
+    },
+    "project_id": {
+      "type": "string"
+    },
+    "repository_id": {
+      "type": "string"
+    },
+    "working_directory": {
+      "type": "string"
+    },
+    "branch": {
+      "type": "string"
+    },
+    "commit": {
+      "type": "string"
+    },
+    "worktree_id": {
+      "type": "string"
+    },
+    "content": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/part"
+      },
+      "description": "Ordered content parts. Empty content is legal (e.g. an event that only carries metadata)."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Structured, non-content metadata preserved from the source. Keys are provider-defined.",
+      "additionalProperties": true
+    },
+    "redactions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/redaction"
+      },
+      "description": "Redactions applied to this event under the canonical secret policy."
+    },
+    "provenance": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "provenance.schema.json"
+      },
+      "description": "Every canonical event carries at least one observation."
+    }
+  },
+  "$defs": {
+    "canonical_id": {
+      "type": "string",
+      "pattern": "^ev_[0-9a-f]{24}$"
+    },
+    "conversation_id": {
+      "type": "string",
+      "pattern": "^cv_[0-9a-f]{24}$"
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^se_[0-9a-f]{24}$"
+    },
+    "rfc3339_utc": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$"
+    },
+    "timestamp_confidence": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "provider_derived",
+        "database_derived",
+        "filesystem_derived",
+        "sequence_only",
+        "unknown"
+      ],
+      "description": "How much the timestamp is trusted. `exact` means an absolute instant with an explicit UTC offset came from the source itself."
+    },
+    "role": {
+      "type": "string",
+      "enum": ["user", "assistant", "system", "tool", "developer", "other"]
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "message",
+        "reasoning",
+        "tool_call",
+        "tool_result",
+        "compaction",
+        "system_note",
+        "attachment",
+        "agent_spawn",
+        "agent_result",
+        "interruption",
+        "error",
+        "opaque"
+      ]
+    },
+    "reasoning_visibility": {
+      "type": "string",
+      "enum": ["public", "summary", "opaque"],
+      "description": "`public` is provider-stored plain text; `summary` is a provider-authored summary; `opaque` is an encrypted/vendor-hidden blob that is never decoded."
+    },
+    "truncation": {
+      "type": "object",
+      "required": ["full_sha256", "full_bytes", "inline_bytes", "artifact"],
+      "properties": {
+        "full_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 of the full text after secret redaction."
+        },
+        "full_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inline_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "artifact": {
+          "type": "string",
+          "pattern": "^art_[0-9a-f]{24}$"
+        }
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "required": ["kind", "count", "field"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "Detector name, e.g. `openai_key`, or `multiple(a+b)` when several matched."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "field": {
+          "type": "string",
+          "description": "JSON path where it was applied, e.g. `content[0].text`."
+        }
+      }
+    },
+    "part": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "text"],
+          "properties": {
+            "type": { "const": "text" },
+            "text": { "type": "string" },
+            "truncation": { "$ref": "#/$defs/truncation" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "text", "visibility"],
+          "properties": {
+            "type": { "const": "reasoning" },
+            "text": { "type": "string" },
+            "visibility": { "$ref": "#/$defs/reasoning_visibility" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "name", "arguments"],
+          "properties": {
+            "type": { "const": "tool_call" },
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "arguments": true
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "output", "is_error"],
+          "properties": {
+            "type": { "const": "tool_result" },
+            "tool_call_id": { "type": "string" },
+            "output": true,
+            "is_error": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": { "const": "image" },
+            "artifact": { "type": "string", "pattern": "^art_[0-9a-f]{24}$" },
+            "mime": { "type": "string" },
+            "filename": { "type": "string" },
+            "source_ref": {
+              "type": "string",
+              "description": "Provider-side reference when the bytes are not present locally."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": { "const": "file_ref" },
+            "path": { "type": "string" },
+            "artifact": { "type": "string", "pattern": "^art_[0-9a-f]{24}$" },
+            "mime": { "type": "string" },
+            "filename": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "artifact", "size"],
+          "properties": {
+            "type": { "const": "artifact" },
+            "artifact": { "type": "string", "pattern": "^art_[0-9a-f]{24}$" },
+            "mime": { "type": "string" },
+            "filename": { "type": "string" },
+            "size": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "value"],
+          "properties": {
+            "type": { "const": "data" },
+            "value": true
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "kind"],
+          "properties": {
+            "type": { "const": "opaque" },
+            "kind": { "type": "string" },
+            "note": { "type": "string" },
+            "raw": true
+          },
+          "description": "Source material deliberately not interpreted - unknown block types, encrypted payloads, unsupported shapes - preserved verbatim."
+        }
+      ]
+    }
+  }
+}

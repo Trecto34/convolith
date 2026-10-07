@@ -1,0 +1,17 @@
+{
+  "id": "prt_9f3c0a1b2006ZyXwVuTsRqPoNm",
+  "sessionID": "ses_3f7a1c9d2ffeKq81ZxWvBnMcLd",
+  "messageID": "msg_9f3c0a1b2002AbCdEfGhIjKlMn",
+  "type": "tool",
+  "callID": "toolu_oc_003",
+  "tool": "bash",
+  "state": {
+    "status": "running",
+    "input": {
+      "command": "chmod +x hello.sh"
+    },
+    "time": {
+      "start": 1777700009000
+    }
+  }
+}

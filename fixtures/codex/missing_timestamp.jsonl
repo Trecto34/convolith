@@ -1,0 +1,4 @@
+{"type":"session_meta","payload":{"id":"019a0007-aaaa-7bbb-8ccc-000000000007","cwd":"/home/demo/proj","originator":"codex_cli_rs","source":"cli"}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"no timestamp here"}],"id":"msg_019a0007-0000-7000-8000-000000000001"}}
+{"timestamp":"not-a-time","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"unparsable timestamp"}],"id":"msg_019a0007-0000-7000-8000-000000000002"}}
+{"timestamp":"2026-04-01T10:55:00.000Z","ordinal":3,"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"has one"}],"id":"msg_019a0007-0000-7000-8000-000000000003"}}
