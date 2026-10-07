@@ -1,55 +1,48 @@
-//! Perplexity thread export (JSON).
+//! Perplexity "user data export" (`conversations-<timestamp>-<hash>.json` next to a
+//! `user-data-*.xlsx` workbook).
 //!
-//! Status: **unverified-against-real-export**, and the least certain parser:
-//! Perplexity documents no bulk JSON export schema, and no real sample was
-//! available. This reads only a narrowly defined shape and refuses the rest:
+//! Status: **verified against real exports** (two real account exports; schema
+//! only was inspected, tests use synthetic content). Shape:
 //!
 //! ```json
-//! {"version": 1, "threads": [{"id"|"uuid"|"thread_id": "...", "title": "...",
-//!   "created_at": "<RFC 3339>", "entries": [{"id"|"uuid": "...",
-//!   "query": "...", "answer": "...", "created_at": "<RFC 3339>",
-//!   "sources": [{"url": "...", "title": "..."}]}]}]}
+//! {"conversations": [{"context_uuid", "context_title", "created_at", "updated_at",
+//!   "mode", "collection_uuid", "entries": [{"entry_uuid", "query", "answer",
+//!   "created_at", "engine_mode", "label", "query_status"}]}]}
 //! ```
 //!
-//! (a bare array of threads is accepted too). A file is claimed only when the
-//! path or its head says `perplexity` and it looks like threads of entries. A
-//! declared `version` other than 1 is **not** guessed at: the file is
-//! inventoried as unsupported with the version in the reason. Per-thread
-//! Markdown/HTML/PDF exports have no ids or timestamps and are inventoried too.
+//! There is no `version` field, no citations/sources and no per-entry model. Each
+//! entry becomes a user event (`query`) and, when the answer is non-empty, an
+//! assistant event (`answer`); `engine_mode`, `query_status` and `label` are kept
+//! as metadata. Identity: conversation = `context_uuid`; events =
+//! `<entry_uuid>:query` / `<entry_uuid>:answer`. The xlsx workbook (profile,
+//! preferences, memory, subscription) is inventoried as unsupported. A JSON whose
+//! `conversations` entries lack `context_uuid`/`entries` is not claimed.
 
 use super::webexport::{iso_stamp, str_of, unique_id};
 use crate::model::{EventDraft, EventType, Part, Role};
 use crate::parser::{ConversationMeta, EventSink, IdentityHint, ParseContext, SourceParser};
 use crate::source::{Capabilities, Confidence, Detection, ParseReport, Probe, Source};
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use serde_json::{json, Value};
 
 pub struct PerplexityParser;
 
-/// Value of a top-level-looking `"version"` key in the probe window, if any.
-fn declared_version(head: &str) -> Option<String> {
-    let rest = head.split_once("\"version\"")?.1.trim_start();
-    let rest = rest.strip_prefix(':')?.trim_start();
-    let end = rest.find([',', '}', '\n']).unwrap_or(rest.len());
-    Some(rest[..end].trim().trim_matches('"').to_owned())
-}
-
 fn candidate(p: &Probe) -> bool {
     p.ext() == "json"
-        && (p.full_path.to_ascii_lowercase().contains("perplexity")
-            || p.head.to_ascii_lowercase().contains("perplexity"))
-        && (p.head.contains("\"entries\"") || p.head.contains("\"threads\""))
+        && p.head.contains("\"conversations\"")
+        && p.head.contains("\"context_uuid\"")
+        && p.head.contains("\"entries\"")
 }
 
 pub fn known_unsupported(p: &Probe) -> Option<(&'static str, &'static str)> {
-    if !candidate(p) {
-        return None;
+    let name = p.filename().to_ascii_lowercase();
+    if name.starts_with("user-data-") && name.ends_with(".xlsx") {
+        return Some((
+            "perplexity-export-workbook",
+            "Perplexity account workbook (profile, preferences, memory, subscription); not conversation history",
+        ));
     }
-    // `candidate` + a version this parser does not know (detect declined it).
-    Some((
-        "perplexity-export-unknown-version",
-        "Perplexity export declares a version this parser does not know (only version 1 is read); not guessed at",
-    ))
+    None
 }
 
 impl SourceParser for PerplexityParser {
@@ -77,18 +70,17 @@ impl SourceParser for PerplexityParser {
         true
     }
     fn description(&self) -> &'static str {
-        "Perplexity thread export JSON, version 1 only (unverified against a real export)"
+        "Perplexity user data export conversations-*.json (verified against real exports)"
     }
     fn detect(&self, p: &Probe) -> Detection {
-        let known = declared_version(&p.head).map_or(true, |v| matches!(v.as_str(), "1" | "1.0"));
-        if candidate(p) && known {
+        if candidate(p) {
             Detection::hit(
                 self.id(),
                 self.provider(),
                 self.application(),
-                "perplexity-export-v1",
-                Confidence::Weak,
-                "Perplexity threads/entries JSON; unverified against a real export",
+                "perplexity-user-data-export",
+                Confidence::Strong,
+                "conversations[] of context_uuid/entries[]",
             )
         } else {
             Detection::none(self.id())
@@ -105,96 +97,91 @@ impl SourceParser for PerplexityParser {
         }
         let doc: Value = serde_json::from_reader(std::io::BufReader::new(std::fs::File::open(
             &source.read_path,
-        )?))?;
-        let threads = match &doc {
-            Value::Array(a) => a,
-            d => match d.get("threads").and_then(Value::as_array) {
-                Some(a) => a,
-                None => bail!("no threads array (unrecognized Perplexity export shape)"),
-            },
+        )?))
+        .context("reading export document")?;
+        let Some(convs) = doc.get("conversations").and_then(Value::as_array) else {
+            bail!("no conversations array (unrecognized Perplexity export shape)");
         };
         let mut report = ParseReport::default();
-        for (i, t) in threads.iter().enumerate() {
+        for (i, c) in convs.iter().enumerate() {
             report.records_examined += 1;
-            if let Err(e) = parse_thread(t, i as u64, sink, &mut report) {
+            if let Err(e) = parse_conversation(c, i as u64, sink, &mut report) {
                 report.records_failed += 1;
-                report.notes.push(format!("thread {i}: {e:#}"));
+                report.notes.push(format!("conversation {i}: {e:#}"));
             }
         }
         Ok(report)
     }
 }
 
-fn first_str<'a>(v: &'a Value, keys: &[&str]) -> Option<&'a str> {
-    keys.iter().find_map(|k| v.get(*k).and_then(Value::as_str))
-}
-
-fn parse_thread(
-    t: &Value,
+fn parse_conversation(
+    c: &Value,
     index: u64,
     sink: &mut dyn EventSink,
     report: &mut ParseReport,
 ) -> Result<()> {
-    let Some(entries) = t.get("entries").and_then(Value::as_array) else {
-        bail!("missing entries array (unrecognized Perplexity thread shape)");
+    let Some(entries) = c.get("entries").and_then(Value::as_array) else {
+        bail!("missing entries array (unrecognized Perplexity conversation shape)");
     };
-    let id = first_str(t, &["id", "uuid", "thread_id"]);
-    sink.begin(ConversationMeta {
+    let id = c.get("context_uuid").and_then(Value::as_str);
+    let mut meta = ConversationMeta {
         provider: Some("perplexity".into()),
         application: Some("perplexity".into()),
         native_id: unique_id(id),
-        title: first_str(t, &["title", "name"]).map(str::to_owned),
-        started_at: Some(iso_stamp(t.get("created_at"))).filter(|s| s.utc.is_some()),
+        title: str_of(c, "context_title"),
+        started_at: Some(iso_stamp(c.get("created_at"))).filter(|s| s.utc.is_some()),
+        ended_at: Some(iso_stamp(c.get("updated_at"))).filter(|s| s.utc.is_some()),
         identity_hint: IdentityHint::Native,
-        metadata: [
-            ("perplexity_thread_id".to_string(), json!(id)),
-            ("conversation_index".to_string(), json!(index)),
-        ]
-        .into_iter()
-        .collect(),
         ..Default::default()
-    })?;
+    };
+    meta.metadata
+        .insert("perplexity_context_uuid".into(), json!(id));
+    meta.metadata
+        .insert("conversation_index".into(), json!(index));
+    for k in ["mode", "collection_uuid"] {
+        if let Some(v) = c.get(k).filter(|v| !v.is_null()) {
+            meta.metadata.insert(format!("perplexity_{k}"), v.clone());
+        }
+    }
+    sink.begin(meta)?;
     report.conversations += 1;
     for e in entries {
-        let eid = first_str(e, &["id", "uuid"]).map(str::to_owned);
+        let eid = str_of(e, "entry_uuid");
         let ts = iso_stamp(e.get("created_at"));
-        let q = first_str(e, &["query", "question", "prompt"]);
-        let a = first_str(e, &["answer", "response"]);
+        let (q, a) = (
+            str_of(e, "query"),
+            str_of(e, "answer").filter(|a| !a.is_empty()),
+        );
         if q.is_none() && a.is_none() {
             report.records_failed += 1;
             report.notes.push("entry without query or answer".into());
             continue;
         }
-        let mut uid = None;
+        let tag = |d: &mut EventDraft| {
+            for k in ["engine_mode", "query_status", "label"] {
+                if let Some(v) = e.get(k).filter(|v| !v.is_null()) {
+                    d.metadata.insert(format!("perplexity_{k}"), v.clone());
+                }
+            }
+        };
+        let mut qid = None;
         if let Some(q) = q {
             let mut d =
                 EventDraft::with_content(Role::User, EventType::Message, vec![Part::text(q)]);
             d.native_id = eid.as_ref().map(|i| format!("{i}:query"));
             d.timestamp = ts.clone();
-            uid = d.native_id.clone();
+            qid = d.native_id.clone();
+            tag(&mut d);
             sink.emit(d)?;
             report.events += 1;
         }
         if let Some(a) = a {
-            let mut content = vec![Part::text(a)];
-            for s in e
-                .get("sources")
-                .or_else(|| e.get("citations"))
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-            {
-                content.push(Part::Opaque {
-                    kind: "perplexity_source".into(),
-                    note: str_of(s, "url").or_else(|| s.as_str().map(str::to_owned)),
-                    raw: Some(s.clone()),
-                });
-            }
-            let mut d = EventDraft::with_content(Role::Assistant, EventType::Message, content);
+            let mut d =
+                EventDraft::with_content(Role::Assistant, EventType::Message, vec![Part::text(a)]);
             d.native_id = eid.as_ref().map(|i| format!("{i}:answer"));
-            d.parent_native_id = uid;
-            d.model = str_of(e, "model");
+            d.parent_native_id = qid;
             d.timestamp = ts;
+            tag(&mut d);
             sink.emit(d)?;
             report.events += 1;
         }

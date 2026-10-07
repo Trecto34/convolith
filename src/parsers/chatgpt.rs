@@ -10,10 +10,12 @@
 //! Every node that carries a message is emitted, so regenerations and edited
 //! branches survive, not only the path ending at `current_node`
 //! (`chatgpt_on_current_path` marks that path). Identity comes from the
-//! provider's conversation id and message id, so re-importing the same or a
-//! newer export of the account adds only new events.
+//! provider's conversation id and node key, so re-importing the same or a newer
+//! export of the account adds only new events. Event ids, conversation ids and
+//! content parts are deliberately identical to v0.1.0's (golden ids in
+//! `tests/webexport_chatgpt_compat.rs`); anything newer lives in event metadata.
 
-use super::webexport::{epoch_stamp, is_conversations_name, stream_array, unique_id};
+use super::webexport::{epoch_stamp, is_conversations_name, stream_array};
 use crate::model::{EventDraft, EventType, Part, Role};
 use crate::parser::{ConversationMeta, EventSink, IdentityHint, ParseContext, SourceParser};
 use crate::source::{Capabilities, Confidence, Detection, ParseReport, Probe, Source};
@@ -87,19 +89,21 @@ impl SourceParser for ChatGptParser {
     }
 }
 
-/// Id of the message a node carries (`message.id`, else the node key).
-fn message_id<'a>(mapping: &'a Map<String, Value>, key: &'a str) -> Option<&'a str> {
-    let m = mapping.get(key)?.get("message").filter(|m| !m.is_null())?;
-    Some(m.get("id").and_then(Value::as_str).unwrap_or(key))
-}
-
 /// Nearest ancestor of `key` that carries a message (empty root nodes skipped).
+/// Node keys, not `message.id`, are the event ids: that is what v0.1.0 used, so
+/// archives that already hold ChatGPT events keep their event ids.
 fn message_parent(mapping: &Map<String, Value>, key: &str) -> Option<String> {
+    let has_message = |k: &str| {
+        mapping
+            .get(k)
+            .and_then(|n| n.get("message"))
+            .is_some_and(|m| !m.is_null())
+    };
     let mut seen = HashSet::new();
     let mut cur = mapping.get(key)?.get("parent")?.as_str()?;
     while seen.insert(cur) {
-        if let Some(id) = message_id(mapping, cur) {
-            return Some(id.to_owned());
+        if has_message(cur) {
+            return Some(cur.to_owned());
         }
         cur = mapping.get(cur)?.get("parent")?.as_str()?;
     }
@@ -107,24 +111,13 @@ fn message_parent(mapping: &Map<String, Value>, key: &str) -> Option<String> {
 }
 
 fn map_part(part: &Value) -> Part {
-    if let Some(s) = part.as_str() {
-        return Part::text(s);
-    }
-    if part.get("content_type").and_then(Value::as_str) == Some("image_asset_pointer") {
-        return Part::Image {
-            artifact: None,
-            mime: None,
-            filename: None,
-            source_ref: part
-                .get("asset_pointer")
-                .and_then(Value::as_str)
-                .map(str::to_owned),
-        };
-    }
-    Part::Opaque {
-        kind: "chatgpt_content_part".into(),
-        note: None,
-        raw: Some(part.clone()),
+    match part.as_str() {
+        Some(s) => Part::text(s),
+        None => Part::Opaque {
+            kind: "chatgpt_content_part".into(),
+            note: None,
+            raw: Some(part.clone()),
+        },
     }
 }
 
@@ -163,14 +156,15 @@ fn parse_conversation(
             .and_then(|n| n.get("parent"))
             .and_then(Value::as_str);
     }
+    // `id` first, as v0.1.0 did, so conversation ids of existing archives stay.
     let conv_id = obj
-        .get("conversation_id")
-        .or_else(|| obj.get("id"))
+        .get("id")
+        .or_else(|| obj.get("conversation_id"))
         .and_then(Value::as_str);
     let mut meta = ConversationMeta {
         provider: Some("openai".into()),
         application: Some("chatgpt".into()),
-        native_id: unique_id(conv_id),
+        native_id: conv_id.map(str::to_owned),
         title: obj.get("title").and_then(Value::as_str).map(str::to_owned),
         model: obj
             .get("default_model_slug")
@@ -214,21 +208,14 @@ fn parse_conversation(
             content.extend(parts.iter().map(map_part));
         } else if let Some(text) = message.pointer("/content/text").and_then(Value::as_str) {
             content.push(Part::text(text));
-        } else if let Some(c) = message.get("content").filter(|c| !c.is_null()) {
-            content.push(Part::Opaque {
-                kind: format!(
-                    "chatgpt_content:{}",
-                    c.get("content_type").and_then(Value::as_str).unwrap_or("?")
-                ),
-                note: None,
-                raw: Some(c.clone()),
-            });
         }
+        // Parts must stay what v0.1.0 produced (they feed the content fingerprint, so
+        // changing them would turn re-imports of old archives into conflicts).
+        // Everything newer goes to metadata.
         let attachments = message
-            .pointer("/metadata/attachments")
+            .get("attachments")
             .and_then(Value::as_array)
             .into_iter()
-            .chain(message.get("attachments").and_then(Value::as_array))
             .flatten();
         for a in attachments {
             let filename = a
@@ -260,7 +247,7 @@ fn parse_conversation(
             }
         }
         let mut draft = EventDraft::with_content(role, EventType::Message, content);
-        draft.native_id = Some(message_id(mapping, key).unwrap_or(key).to_owned());
+        draft.native_id = Some(key.clone());
         draft.parent_native_id = message_parent(mapping, key);
         draft.model = message
             .get("metadata")
@@ -279,6 +266,28 @@ fn parse_conversation(
             if let Some(x) = message.get(k).filter(|x| !x.is_null()) {
                 draft.metadata.insert(format!("chatgpt_{k}"), x.clone());
             }
+        }
+        if let Some(a) = message
+            .pointer("/metadata/attachments")
+            .filter(|a| !a.is_null())
+        {
+            draft
+                .metadata
+                .insert("chatgpt_attachments".into(), a.clone());
+        }
+        if message.pointer("/content/parts").is_none() && message.pointer("/content/text").is_none()
+        {
+            if let Some(c) = message.get("content").filter(|c| !c.is_null()) {
+                draft.metadata.insert("chatgpt_content".into(), c.clone());
+            }
+        }
+        if let Some(id) = message
+            .get("id")
+            .filter(|i| i.as_str() != Some(key.as_str()))
+        {
+            draft
+                .metadata
+                .insert("chatgpt_message_id".into(), id.clone());
         }
         if let Some(ct) = message.pointer("/content/content_type") {
             draft

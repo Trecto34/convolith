@@ -156,20 +156,26 @@ under the same provider+application; identical text alone never merges.
 
 | Export | Parser | Status | How to request it |
 |--------|--------|--------|-------------------|
-| ChatGPT data export (`conversations.json`, sharded `conversations-NNN.json`) | `chatgpt_export` | **unverified-against-real-export** (built from the documented layout; synthetic tests only) | ChatGPT: Settings > Data controls > Export data; the download link arrives by email |
-| Claude (claude.ai) data export (`conversations.json` with `chat_messages`) | `claude_web_export` | **unverified-against-real-export** | claude.ai: Settings > Privacy > Export data; the link arrives by email |
-| Gemini via Google Takeout, `Gemini in Workspace/Conversation History/conversation_*.txt` | `gemini_takeout` | **verified** against a real Takeout (schema inspected; tests synthetic) | takeout.google.com: select Gemini (and/or Gemini in Workspace), JSON where offered |
-| Gemini via Google Takeout, `My Activity/Gemini Apps/MyActivity.json` | `gemini_takeout` | **unverified-against-real-export** | takeout.google.com: select My Activity > Gemini Apps, format JSON |
-| Perplexity thread JSON (version 1 shape documented in `src/parsers/perplexity.rs`) | `perplexity_export` | **unverified-against-real-export**; least certain: Perplexity documents no bulk export schema | account data request / thread export; Markdown/PDF/HTML thread exports are inventoried only |
+| Claude (claude.ai) data export: `conversations-NNN.zip` > `conversations.json` (with the sibling `manifest-*.json` and part zips) | `claude_web_export` | **verified** against a real export (schema only; synthetic-content tests) | claude.ai: Settings > Privacy > Export data; the link arrives by email |
+| Claude Design chats: `design_chats-NNN.zip` > `design_chats/<uuid>.json` | `claude_design_export` | **verified** against a real export | same Claude export |
+| Perplexity user data export: `user_data_export_*.zip` > `conversations-*.json` (+ `user-data-*.xlsx`) | `perplexity_export` | **verified** against two real exports | Perplexity: Settings > Account > Download/Export your data |
+| Gemini via Google Takeout, `Gemini in Workspace/Conversation History/conversation_*.txt` | `gemini_takeout` | **verified** against a real Takeout | takeout.google.com: select Gemini / Gemini in Workspace |
+| Gemini via Google Takeout, `My Activity/Gemini Apps/MyActivity.json` | `gemini_takeout` | **unverified-against-real-export** (none available; the real Takeout had no My Activity folder) | takeout.google.com: My Activity > Gemini Apps, format JSON |
+| ChatGPT data export (`conversations.json`, sharded `conversations-NNN.json`) | `chatgpt_export` | **unverified-against-real-export** for the current layout (no real ChatGPT export was available; the parser predates this work and is built from the documented layout); v0.1.0 event ids are preserved | ChatGPT: Settings > Data controls > Export data; the link arrives by email |
 
 Not guessed at: an export whose schema or declared version is not recognised is listed
 in the import report as `unsupported` with the reason, never parsed on a best guess.
-Also inventoried (not imported): ChatGPT `chat.html`, `user.json`, `message_feedback.json`,
-attachment files; Claude `projects.json`, `users.json`; Takeout NotebookLM, Gems and
-`MyActivity.html`; conversation images. Attachments are kept as references (name, mime,
+Also inventoried (not imported), each with its reason: ChatGPT `chat.html`, `user.json`,
+`message_feedback.json`, attachment files; Claude `manifest-*.json`, `users.json`,
+`login_history.json`, `memories/`, `projects/` (project docs), `reflections/` (feedback),
+`artifacts/` (design frames); Perplexity `user-data-*.xlsx`; Takeout NotebookLM, Gems and
+`MyActivity.html`; conversation images; Office-document internals. Attachments are kept as references (name, mime,
 provider file id); their bytes are not imported. Gemini's per-turn times are
-*last-modified* times and are marked so (`gemini_timestamp_kind`). ChatGPT branches
-(regenerations) are all kept; `chatgpt_on_current_path` marks the live one.
+*last-modified* times and are marked so (`gemini_timestamp_kind`); a Takeout turn is either a
+user or a model turn and `turn_index` can repeat, so turns are identified by role, index and
+occurrence. Claude exports carry real edit/retry branches (`parent_message_uuid`; the
+all-zero root sentinel means no parent). ChatGPT branches (regenerations) are all kept;
+`chatgpt_on_current_path` marks the live one.
 
 ## Known limitations
 

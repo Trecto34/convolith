@@ -33,6 +33,7 @@ fn conversation(id: &str, extra_leaf: bool) -> Value {
              "message": msg(A2, "assistant", Some(1700000002.0), json!(["regenerated synthetic answer",
                 {"content_type": "image_asset_pointer", "asset_pointer": "file-service://file-synthetic1"}]))}
     });
+    mapping[A2]["message"]["attachments"] = json!([{"id": "file-synthetic2", "name": "n.txt"}]);
     mapping[A2]["message"]["metadata"]["attachments"] = json!([{"id": "file-synthetic1", "name": "notes.txt", "mime_type": "text/plain", "size": 12}]);
     let mut current = A2;
     if extra_leaf {
@@ -143,8 +144,14 @@ fn attachments_are_kept_as_references() {
         .into_iter()
         .find(|e| e.metadata["native_id"] == A2)
         .unwrap();
-    assert!(a2.content.iter().any(|p| matches!(p, Part::FileRef { filename: Some(f), mime: Some(m), .. } if f == "notes.txt" && m == "text/plain")));
-    assert!(a2.content.iter().any(|p| matches!(p, Part::Image { source_ref: Some(r), .. } if r == "file-service://file-synthetic1")));
+    assert!(a2
+        .content
+        .iter()
+        .any(|p| matches!(p, Part::FileRef { filename: Some(f), .. } if f == "n.txt")));
+    // the image pointer stays an opaque part (v0.1.0-compatible fingerprint); the
+    // documented metadata.attachments list is kept in event metadata
+    assert!(a2.content.iter().any(|p| matches!(p, Part::Opaque { raw: Some(r), .. } if r["asset_pointer"] == "file-service://file-synthetic1")));
+    assert_eq!(a2.metadata["chatgpt_attachments"][0]["name"], "notes.txt");
 }
 
 #[test]

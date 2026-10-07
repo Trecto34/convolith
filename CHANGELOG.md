@@ -11,25 +11,26 @@ is independent of the crate version.
 
 ### Added
 
-- Parsers for official web-chat exports: ChatGPT (extended: sharded
-  `conversations-NNN.json`, provider-id identity, all branches, current-path flag,
-  attachments), Claude (`claude_web_export`), Gemini Google Takeout (`gemini_takeout`:
-  Conversation History, My Activity JSON) and Perplexity (`perplexity_export`, version 1).
-  Zips, extracted folders and bare files auto-detect. Verified against a real sample: only
-  the Gemini Takeout Conversation History shape; ChatGPT, Claude, My Activity and
-  Perplexity are **unverified-against-real-export** (documented layouts, synthetic tests).
-  Unrecognised schemas/versions and the sidecar files of these exports are inventoried as
-  unsupported with a reason. Web-export events carry the importing machine id.
+- Parsers for official web-chat exports, checked against real exports: Claude
+  (`claude_web_export`: split data export with `manifest-*.json`; real retry/edit branches
+  via `parent_message_uuid`), Claude Design chats (`claude_design_export`), Perplexity
+  (`perplexity_export`: `user_data_export_*.zip`) and Gemini Google Takeout
+  (`gemini_takeout`: Conversation History; each array element is a user *or* model turn
+  and `turn_index` may repeat). Unverified-against-real-export: ChatGPT (existing parser,
+  extended: sharded `conversations-NNN.json`, current-path flag, richer metadata) and
+  Gemini My Activity JSON. Zips, extracted folders and bare files auto-detect.
+  Unrecognised schemas and the other files of these exports (manifests, memories, projects,
+  feedback, design frames, account metadata/workbooks, NotebookLM, images, Office parts)
+  are inventoried as unsupported with a reason. Web-export events carry the importing
+  machine id.
 
 ### Changed
 
-- ChatGPT export events now use native identity (provider conversation/message ids)
-  instead of the position+content fingerprint, so a newer export of the same account adds
-  only new events. Archives that already hold ChatGPT export events from v0.1.0 will see
-  those events re-imported once under the new ids.
-
-### Changed
-
+- ChatGPT export parsing keeps the v0.1.0 event and conversation ids and content
+  fingerprints (node keys as event ids, `id` as conversation id, v0.1.0 parts), so
+  re-importing a ChatGPT export into an archive made by v0.1.0 creates no new events or
+  conversations; richer data (`metadata.attachments`, non-text content, current-path
+  flag, `update_time`) is added to event metadata only. Locked by a golden-id test.
 - Project renamed from `aichive` to `Convolith` (crate, binary, lib, `CONVOLITH_*` env,
   docs). New manifests record `tool: "convolith"`. The `convolith-canonical` format id,
   the `convolith-local-machine-v1` machine-id hash input, the `.convolith-complete`

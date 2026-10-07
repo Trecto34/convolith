@@ -6,12 +6,19 @@
 //!   Takeout "Gemini in Workspace / Conversation History" folder): one JSON
 //!   document per conversation, stored as `conversation_<N>.txt`, with `title`,
 //!   `creation_time`, `last_modification_time` and `conversation_turns[]` of
-//!   `{user_turn:{prompt,turn_index,turn_last_modified,turn_deleted_time?},
-//!   system_turn:{text[{data|cards[{content}]}],images[],model_thoughts[]…}}`.
+//!   either `{user_turn:{prompt,turn_index,turn_last_modified,turn_deleted_time?}}`
+//!   or `{system_turn:{text[{data|cards[{content}]}],images[],model_thoughts[]…}}` —
+//!   user and model turns are separate array elements and `turn_index` is a
+//!   sequence over both (user 0, model 1, user 2, …). The same index can repeat
+//!   (edited/regenerated turns), so the identity of a turn is
+//!   `<role>:<turn_index>:<occurrence>` where occurrence counts earlier turns of the
+//!   same role and index in file order.
 //!   Images are referenced by name (`conversation_<N>_turn_<T>_images_<I>`);
 //!   their bytes are not imported. Per-turn times are *last-modified* times,
 //!   recorded as such in `gemini_timestamp_kind`. There is no per-message id, so
-//!   identity is `<conversation file id>:<creation_time>` plus the turn index.
+//!   identity is `<conversation file id>:<creation_time>` plus the turn identity above.
+//!   Because a user and a model turn are separate elements, no parent link is
+//!   invented between them.
 //! * `gemini-myactivity` — **unverified-against-real-export**: Takeout
 //!   `My Activity/Gemini Apps/MyActivity.json`, entries
 //!   `{header,title:"Prompted …",time,safeHtmlItem[{html}]}`. Entries have no
@@ -154,6 +161,7 @@ fn parse_conversation(
         .insert("gemini_conversation_file".into(), json!(fid));
     sink.begin(meta)?;
     report.conversations += 1;
+    let mut seen: std::collections::HashMap<(&str, i64), u32> = Default::default();
     for (i, t) in turns.iter().enumerate() {
         let (u, s) = (t.get("user_turn"), t.get("system_turn"));
         if u.is_none() && s.is_none() {
@@ -163,84 +171,84 @@ fn parse_conversation(
                 .push(format!("turn {i}: neither user_turn nor system_turn"));
             continue;
         }
-        let idx = |x: &Value| {
-            x.get("turn_index")
+        for (role, turn) in [("user", u), ("model", s)] {
+            let Some(turn) = turn else { continue };
+            let idx = turn
+                .get("turn_index")
                 .and_then(Value::as_i64)
-                .unwrap_or(i as i64)
-        };
-        let nid = |role: &str, x: &Value| key.as_ref().map(|k| format!("{k}:{role}:{}", idx(x)));
-        let mut user_nid = None;
-        if let Some(u) = u {
-            let mut d = EventDraft::with_content(
-                Role::User,
-                EventType::Message,
-                vec![Part::text(
-                    u.get("prompt").and_then(Value::as_str).unwrap_or(""),
-                )],
-            );
-            d.native_id = nid("user", u);
-            user_nid = d.native_id.clone();
-            stamp_turn(&mut d, u);
-            sink.emit(d)?;
-            report.events += 1;
-        }
-        if let Some(s) = s {
-            let mut content = Vec::new();
-            for th in s
-                .get("model_thoughts")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-            {
-                let g = |k| th.get(k).and_then(Value::as_str).unwrap_or("");
-                content.push(Part::Reasoning {
-                    text: format!("{}\n\n{}", g("headline"), g("description")),
-                    visibility: ReasoningVisibility::Summary,
-                });
-            }
-            for item in s
-                .get("text")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-            {
-                if let Some(x) = item.get("data").and_then(Value::as_str) {
-                    content.push(Part::text(x));
-                }
-                for c in item
-                    .get("cards")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                {
-                    if let Some(x) = c.get("content").and_then(Value::as_str) {
-                        content.push(Part::text(x));
-                    }
-                }
-            }
-            for img in s
-                .get("images")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-            {
-                content.push(Part::Image {
-                    artifact: None,
-                    mime: None,
-                    filename: None,
-                    source_ref: img.as_str().map(str::to_owned),
-                });
-            }
-            let mut d = EventDraft::with_content(Role::Assistant, EventType::Message, content);
-            d.native_id = nid("model", s);
-            d.parent_native_id = user_nid;
-            stamp_turn(&mut d, s);
+                .unwrap_or(i as i64);
+            let occ = seen.entry((role, idx)).or_insert(0);
+            let nid = key.as_ref().map(|k| format!("{k}:{role}:{idx}:{occ}"));
+            *occ += 1;
+            let mut d = if role == "user" {
+                EventDraft::with_content(
+                    Role::User,
+                    EventType::Message,
+                    vec![Part::text(
+                        turn.get("prompt").and_then(Value::as_str).unwrap_or(""),
+                    )],
+                )
+            } else {
+                EventDraft::with_content(Role::Assistant, EventType::Message, model_parts(turn))
+            };
+            d.native_id = nid;
+            stamp_turn(&mut d, turn);
             sink.emit(d)?;
             report.events += 1;
         }
     }
     sink.end()?;
     Ok(())
+}
+
+fn model_parts(s: &Value) -> Vec<Part> {
+    let mut content = Vec::new();
+    for th in s
+        .get("model_thoughts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let g = |k| th.get(k).and_then(Value::as_str).unwrap_or("");
+        content.push(Part::Reasoning {
+            text: format!("{}\n\n{}", g("headline"), g("description")),
+            visibility: ReasoningVisibility::Summary,
+        });
+    }
+    for item in s
+        .get("text")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if let Some(x) = item.get("data").and_then(Value::as_str) {
+            content.push(Part::text(x));
+        }
+        for c in item
+            .get("cards")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            if let Some(x) = c.get("content").and_then(Value::as_str) {
+                content.push(Part::text(x));
+            }
+        }
+    }
+    for img in s
+        .get("images")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        content.push(Part::Image {
+            artifact: None,
+            mime: None,
+            filename: None,
+            source_ref: img.as_str().map(str::to_owned),
+        });
+    }
+    content
 }
 
 fn stamp_turn(d: &mut EventDraft, turn: &Value) {

@@ -6,6 +6,7 @@ use crate::parser::Registry;
 pub mod antigravity;
 pub mod chatgpt;
 pub mod claude_code;
+pub mod claude_design;
 pub mod claude_web;
 pub mod codex;
 pub mod deepseek;
@@ -28,6 +29,7 @@ pub fn register_all(registry: &mut Registry) {
     registry.register(Box::new(codex::CodexParser));
     registry.register(Box::new(chatgpt::ChatGptParser));
     registry.register(Box::new(claude_web::ClaudeWebParser));
+    registry.register(Box::new(claude_design::ClaudeDesignParser));
     registry.register(Box::new(gemini_web::GeminiWebParser));
     registry.register(Box::new(perplexity::PerplexityParser));
     registry.register(Box::new(opencode::OpenCodeParser));

@@ -103,6 +103,15 @@ pub fn known_unsupported(p: &Probe) -> Option<(&'static str, &'static str)> {
     let name = p.filename().to_ascii_lowercase();
     let path = p.full_path.replace('\\', "/");
     let lower = path.to_ascii_lowercase();
+    if [".xlsx!/", ".pptx!/", ".docx!/"]
+        .iter()
+        .any(|e| lower.contains(e))
+    {
+        return Some((
+            "office-document-part",
+            "internal part of an Office document found inside an export; the document itself is not conversation history",
+        ));
+    }
     if path.contains("/NotebookLM/") {
         return Some((
             "takeout-notebooklm",
@@ -127,17 +136,6 @@ pub fn known_unsupported(p: &Probe) -> Option<(&'static str, &'static str)> {
             "Gemini My Activity HTML export; request the JSON format in Takeout (only JSON is parsed)",
         ));
     }
-    if lower.contains("perplexity")
-        && matches!(
-            p.ext().as_str(),
-            "md" | "markdown" | "html" | "pdf" | "docx" | "txt"
-        )
-    {
-        return Some((
-            "perplexity-thread-export",
-            "Perplexity per-thread Markdown/HTML/PDF export carries no ids or timestamps and its layout is not verified; not imported",
-        ));
-    }
     if let Some(r) = super::perplexity::known_unsupported(p) {
         return Some(r);
     }
@@ -145,6 +143,44 @@ pub fn known_unsupported(p: &Probe) -> Option<(&'static str, &'static str)> {
         return Some((
             "web-export-unrecognized-schema",
             "conversations.json matches neither the ChatGPT (mapping) nor the Claude (chat_messages) export schema; export version unknown",
+        ));
+    }
+    let rel = p.rel_path.replace('\\', "/");
+    let head_has = |k: &str| p.head.contains(k);
+    if name.starts_with("manifest-") && name.ends_with(".json") && head_has("\"data_files\"") {
+        return Some((
+            "claude-export-manifest",
+            "Claude export manifest listing the split data parts; not conversation history",
+        ));
+    }
+    if rel.starts_with("memories/") && head_has("\"memory_files\"") {
+        return Some((
+            "claude-export-memories",
+            "Claude memory files; not conversation history",
+        ));
+    }
+    if rel.starts_with("projects/") && head_has("\"prompt_template\"") {
+        return Some((
+            "claude-export-projects",
+            "Claude project definitions and knowledge documents; not conversation history",
+        ));
+    }
+    if rel.starts_with("reflections/") && head_has("\"reflections\"") {
+        return Some((
+            "claude-export-feedback",
+            "Claude feedback/reflection records; not conversation history",
+        ));
+    }
+    if rel.starts_with("artifacts/") && (name == "artifact.json" || p.ext() == "html") {
+        return Some((
+            "claude-export-frames",
+            "Claude design artifact/frame versions (generated documents); not conversation history",
+        ));
+    }
+    if name == "login_history.json" && head_has("\"login_events\"") {
+        return Some((
+            "claude-export-metadata",
+            "Claude login history; account metadata, deliberately not imported",
         ));
     }
     if !in_export(p) {

@@ -1,5 +1,7 @@
-//! Claude (claude.ai) export parser (`claude_web_export`), synthetic fixtures only.
-//! Status of the parser: unverified-against-real-export.
+//! Claude (claude.ai) export parser (`claude_web_export`), synthetic content in the
+//! structure of a real split data export (verified shape: parent_message_uuid on every
+//! message with an all-zero root sentinel, content blocks incl. document/image/
+//! injected_prompt_block/token_budget, files[{file_uuid,file_name}], manifest + parts).
 
 mod webexport_common;
 use convolith::model::{Event, Part, Role};
@@ -9,24 +11,31 @@ use webexport_common::*;
 const CONV: &str = "7c1a0000-0000-4000-8000-0000000000c1";
 const M1: &str = "7c1a0000-0000-4000-8000-0000000000b1";
 const M2: &str = "7c1a0000-0000-4000-8000-0000000000b2";
+const ROOT: &str = "00000000-0000-4000-8000-000000000000";
+const M4: &str = "7c1a0000-0000-4000-8000-0000000000b4";
 const M3: &str = "7c1a0000-0000-4000-8000-0000000000b3";
 
 fn conversation(id: &str, with_third: bool) -> Value {
     let mut msgs = vec![
         json!({"uuid": M1, "sender": "human", "text": "synthetic question", "created_at": "2026-01-02T03:04:05.123456Z",
-               "updated_at": "2026-01-02T03:04:05.123456Z",
+               "updated_at": "2026-01-02T03:04:05.123456Z", "parent_message_uuid": ROOT,
                "content": [{"type": "text", "text": "synthetic question"}],
                "attachments": [{"file_name": "doc.txt", "file_type": "text/plain", "file_size": 20, "extracted_content": "synthetic attachment text"}],
-               "files": [{"file_name": "pic.png"}]}),
+               "files": [{"file_uuid": "f-1", "file_name": "pic.png"}]}),
         json!({"uuid": M2, "sender": "assistant", "text": "", "created_at": "2026-01-02T03:04:09.000000Z",
                "content": [{"type": "thinking", "thinking": "synthetic thought"},
                            {"type": "text", "text": "synthetic answer"},
                            {"type": "tool_use", "id": "toolu_synth", "name": "calc", "input": {"x": 1}},
-                           {"type": "mystery", "v": 1}]}),
+                           {"type": "mystery", "v": 1},
+                           {"type": "token_budget"}, {"type": "document", "source": null}],
+               "parent_message_uuid": M1}),
     ];
     if with_third {
         msgs.push(json!({"uuid": M3, "sender": "human", "text": "follow-up synthetic", "created_at": "2026-01-02T03:05:00Z",
                          "parent_message_uuid": M2}));
+        // a retry of the first answer: same parent as M2 (a real branch)
+        msgs.push(json!({"uuid": M4, "sender": "assistant", "text": "retry synthetic", "created_at": "2026-01-02T03:06:00Z",
+                         "parent_message_uuid": M1}));
     }
     json!({"uuid": id, "name": "synthetic claude chat", "created_at": "2026-01-02T03:04:00Z",
            "updated_at": "2026-01-02T03:05:00Z", "account": {"uuid": "acc-synthetic"}, "chat_messages": msgs})
@@ -41,8 +50,26 @@ fn export_zip(dir: &std::path::Path, name: &str, convs: Vec<Value>) -> std::path
                 "conversations.json",
                 Value::Array(convs).to_string().into_bytes(),
             ),
-            ("projects.json", b"[]".to_vec()),
             ("users.json", br#"[{"uuid":"u"}]"#.to_vec()),
+            (
+                "manifest-synthetic.json",
+                br#"{"version":"1.0","data_files":[]}"#.to_vec(),
+            ),
+            ("memories/m.json", br#"{"memory_files":[]}"#.to_vec()),
+            (
+                "projects/p.json",
+                br#"{"uuid":"p","prompt_template":"","docs":[]}"#.to_vec(),
+            ),
+            (
+                "reflections/r.json",
+                br#"{"reflections":[],"feedback":[]}"#.to_vec(),
+            ),
+            (
+                "artifacts/a/artifact.json",
+                br#"{"id":"a","active_version":"v"}"#.to_vec(),
+            ),
+            ("artifacts/a/v1.html", b"<html></html>".to_vec()),
+            ("login_history.json", br#"{"login_events":[]}"#.to_vec()),
         ],
     );
     z
@@ -78,20 +105,35 @@ fn zip_is_detected_and_roles_blocks_ids_are_preserved() {
         .iter()
         .any(|p| matches!(p, Part::Opaque { kind, .. } if kind == "claude_block:mystery")));
     assert_eq!(
-        evs[1].metadata.get("parent_native_id"),
+        evs[0].metadata.get("parent_native_id"),
         None,
-        "linear order is not a provider link"
+        "the zero root sentinel is no parent"
     );
-    assert_eq!(
-        inventory(&out, "projects.json")[0].0,
-        "claude-export-sidecar"
-    );
-    assert_eq!(inventory(&out, "users.json")[0].1, "unsupported");
+    assert_eq!(evs[1].metadata["parent_native_id"], M1);
+    assert!(a
+        .iter()
+        .any(|p| matches!(p, Part::Opaque { kind, .. } if kind == "claude_block:token_budget")));
+    for (needle, fmt) in [
+        ("users.json", "claude-export-sidecar"),
+        ("manifest-synthetic.json", "claude-export-manifest"),
+        ("memories/m.json", "claude-export-memories"),
+        ("projects/p.json", "claude-export-projects"),
+        ("reflections/r.json", "claude-export-feedback"),
+        ("artifact.json", "claude-export-frames"),
+        ("v1.html", "claude-export-frames"),
+        ("login_history.json", "claude-export-metadata"),
+    ] {
+        assert_eq!(
+            inventory(&out, needle),
+            [(fmt.into(), "unsupported".into())],
+            "{needle}"
+        );
+    }
     assert_valid(&out);
 }
 
 #[test]
-fn explicit_parent_links_are_kept() {
+fn branches_share_a_parent() {
     let t = tmp("cl-parent");
     let z = export_zip(&t, "e.zip", vec![conversation(CONV, true)]);
     let out = t.join("out");
@@ -183,7 +225,7 @@ fn reimport_is_idempotent_and_a_newer_export_adds_only_new() {
     assert!(log.contains("events: 0 new, 2 duplicate"), "{log}");
     let z2 = export_zip(&t, "b.zip", vec![conversation(CONV, true)]);
     let log = import(&z2, &out);
-    assert!(log.contains("events: 1 new, 2 duplicate"), "{log}");
+    assert!(log.contains("events: 2 new, 2 duplicate"), "{log}");
     assert_valid(&out);
 }
 

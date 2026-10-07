@@ -1,14 +1,17 @@
 //! Claude (claude.ai) data export: `conversations.json` with `chat_messages`.
 //!
-//! Status: **unverified-against-real-export**. Built from the documented export
-//! layout (`uuid`, `name`, `created_at`/`updated_at`, `account.uuid`,
-//! `chat_messages[{uuid, sender, text, content[], created_at, attachments[],
-//! files[]}]`); no real export was available. A conversation without a
+//! Status: **verified against a real export** (split data-export format with
+//! `manifest-*.json`; schema inspected, tests use synthetic content). Shape (`uuid`, `name`, `created_at`/`updated_at`, `account.uuid`,
+//! `chat_messages[{uuid, sender, text, content[], created_at, updated_at,
+//! attachments[], files[], parent_message_uuid}]`). Content blocks seen: `text`,
+//! `thinking`, `tool_use`, `tool_result`, `injected_prompt_block`, `document`,
+//! `image`, `token_budget` (the last four are kept opaque). A conversation without a
 //! `chat_messages` array is a counted failure, never a guess. `projects.json`
 //! and `users.json` are inventoried as unsupported (see `webexport`).
 //!
-//! The export lists messages flat; a `parent_message_uuid` link is kept only
-//! when the export carries one — linear order is never turned into a parent.
+//! Every message carries `parent_message_uuid` (real edit/retry branches exist);
+//! the all-zero root sentinel `00000000-0000-4000-8000-000000000000` means "no
+//! parent". Linear order is never turned into a parent link.
 
 use super::webexport::{iso_stamp, str_of, stream_array, unique_id};
 use crate::model::{EventDraft, EventType, Part, ReasoningVisibility, Role};
@@ -44,7 +47,7 @@ impl SourceParser for ClaudeWebParser {
         true
     }
     fn description(&self) -> &'static str {
-        "Claude (claude.ai) data export conversations.json (unverified against a real export)"
+        "Claude (claude.ai) data export conversations.json (verified against a real export)"
     }
     fn detect(&self, p: &Probe) -> Detection {
         if super::webexport::is_conversations_name(p.filename())
@@ -212,7 +215,8 @@ fn parse_conversation(
         }
         let mut d = EventDraft::with_content(Role::parse(sender), EventType::Message, content);
         d.native_id = str_of(m, "uuid");
-        d.parent_native_id = str_of(m, "parent_message_uuid");
+        d.parent_native_id = str_of(m, "parent_message_uuid")
+            .filter(|p| p != "00000000-0000-4000-8000-000000000000");
         d.timestamp = iso_stamp(m.get("created_at"));
         d.model = str_of(m, "model");
         d.metadata.insert("claude_sender".into(), json!(sender));

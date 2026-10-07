@@ -1,5 +1,6 @@
-//! Gemini Takeout parser (`gemini_takeout`), synthetic fixtures only. The
-//! Conversation History shape is verified against a real Takeout (schema only);
+//! Gemini Takeout parser (`gemini_takeout`), synthetic content in the structure of a
+//! real Takeout (verified: one user_turn OR system_turn per element, global turn_index,
+//! repeated indices). The
 //! the My Activity JSON shape is unverified-against-real-export.
 
 mod webexport_common;
@@ -10,16 +11,19 @@ use webexport_common::*;
 const CREATED: &str = "2026-08-09T17:29:41.209311+00:00";
 
 fn conversation(extra_turn: bool) -> Value {
-    let mut turns = vec![json!({
-        "user_turn": {"prompt": "synthetic prompt", "turn_index": 0, "turn_last_modified": "2026-08-09T17:29:41.209311+00:00"},
-        "system_turn": {"text": [{"data": "synthetic answer"}, {"cards": [{"content": "synthetic card"}]}],
-                        "images": ["conversation_1786296581_turn_0_images_0"],
+    // Real shape: each array element holds ONE of user_turn / system_turn; turn_index
+    // runs over both; the same index can repeat (edited/regenerated turns).
+    let mut turns = vec![
+        json!({"user_turn": {"prompt": "synthetic prompt", "turn_index": 0, "turn_last_modified": "2026-08-09T17:29:41.209311+00:00"}}),
+        json!({"system_turn": {"text": [{"data": "synthetic answer"}, {"cards": [{"content": "synthetic card"}]}],
+                        "images": ["conversation_1786296581_turn_1_images_0"],
                         "model_thoughts": [{"headline": "synthetic headline", "description": "synthetic description"}],
-                        "turn_index": 0, "turn_last_modified": "2026-08-09T17:29:42+00:00",
-                        "turn_deleted_time": "2026-08-10T00:00:00+00:00"}})];
+                        "turn_index": 1, "turn_last_modified": "2026-08-09T17:29:42+00:00",
+                        "turn_deleted_time": "2026-08-10T00:00:00+00:00"}}),
+    ];
     if extra_turn {
-        turns.push(json!({"user_turn": {"prompt": "second prompt", "turn_index": 1, "turn_last_modified": "2026-08-09T17:34:00+00:00"},
-                          "system_turn": {"text": [{"data": "second answer"}], "turn_index": 1, "turn_last_modified": "2026-08-09T17:34:01+00:00"}}));
+        turns.push(json!({"user_turn": {"prompt": "second prompt", "turn_index": 2, "turn_last_modified": "2026-08-09T17:34:00+00:00"}}));
+        turns.push(json!({"system_turn": {"text": [{"data": "second answer"}], "turn_index": 3, "turn_last_modified": "2026-08-09T17:34:01+00:00"}}));
     }
     json!({"title": "synthetic gemini chat", "creation_time": CREATED,
            "last_modification_time": "2026-08-09T17:34:58.153871+00:00", "conversation_turns": turns})
@@ -82,7 +86,11 @@ fn takeout_zip_turns_become_user_and_assistant_events() {
         .content
         .iter()
         .any(|p| matches!(p, Part::Image { source_ref: Some(r), .. } if r.ends_with("images_0"))));
-    assert_eq!(a.metadata["parent_native_id"], evs[0].metadata["native_id"]);
+    assert_eq!(
+        a.metadata.get("parent_native_id"),
+        None,
+        "no invented user->model link"
+    );
     assert_eq!(
         a.metadata["gemini_turn_deleted_time"],
         "2026-08-10T00:00:00+00:00"
@@ -122,14 +130,33 @@ fn timestamps_are_original_plus_utc_and_marked_last_modified() {
 fn malformed_turn_is_counted_and_the_rest_imports() {
     let t = tmp("gem-bad");
     let mut c = conversation(true);
-    c["conversation_turns"][1] = json!({"unexpected": true});
+    c["conversation_turns"][2] = json!({"unexpected": true});
     let z = takeout(&t, "takeout.zip", c);
     let out = t.join("out");
     let log = import(&z, &out);
-    assert_eq!(gem(&out).len(), 2);
+    assert_eq!(gem(&out).len(), 3);
+    assert!(log.contains("parse errors: 1"), "{log}");
+}
+
+#[test]
+fn repeated_turn_indices_keep_distinct_events() {
+    let t = tmp("gem-rep");
+    let mut c = conversation(false);
+    // a regenerated model turn: same role and turn_index as the first answer
+    let again = json!({"system_turn": {"text": [{"data": "regenerated synthetic answer"}], "turn_index": 1,
+        "turn_last_modified": "2026-08-09T17:30:00+00:00"}});
+    c["conversation_turns"].as_array_mut().unwrap().push(again);
+    let z = takeout(&t, "takeout.zip", c);
+    let out = t.join("out");
+    let log = import(&z, &out);
+    assert!(!log.contains("conflict"), "{log}");
+    let evs = gem(&out);
+    assert_eq!(evs.len(), 3);
+    let ids: std::collections::BTreeSet<_> = evs.iter().map(|e| e.event_id.clone()).collect();
+    assert_eq!(ids.len(), 3);
     assert!(
-        log.contains("parse errors: 1") || log.contains("0 failed"),
-        "{log}"
+        evs.iter().all(|e| e.metadata.get("variant_of").is_none()),
+        "no conflict variants"
     );
 }
 
