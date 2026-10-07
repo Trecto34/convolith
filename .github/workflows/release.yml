@@ -106,7 +106,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: convolith-${{ matrix.target }}
-          path: dist/*
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
           if-no-files-found: error
 
   publish:
@@ -126,7 +128,7 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort | while read -r file; do
+          find . -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' \) -printf '%f\n' | LC_ALL=C sort | while read -r file; do
             sha256sum "$file"
           done > SHA256SUMS
 
@@ -152,6 +154,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh release create "$TAG" dist/* \
+          gh release create "$TAG" dist/*.tar.gz dist/*.zip dist/SHA256SUMS \
             --title "Convolith $TAG" \
             --notes-file /tmp/release-notes.md
