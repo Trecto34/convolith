@@ -80,6 +80,22 @@ pub enum Cmd {
     },
     /// Check a dataset; exit 1 on any FAIL
     Validate { dir: PathBuf },
+    /// Pack a complete canonical dataset into one portable file
+    Pack {
+        archive: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        force: bool,
+    },
+    /// Unpack a portable dataset file
+    Unpack {
+        pack: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        force: bool,
+    },
     /// Print dataset counts
     Stats { dir: PathBuf },
     /// Full-text search
@@ -218,6 +234,22 @@ pub fn run(cli: Cli) -> Result<i32> {
             let r = validate::validate(&dir)?;
             print!("{}", r.summary());
             Ok(if r.passed() { 0 } else { 1 })
+        }
+        Cmd::Pack {
+            archive,
+            output,
+            force,
+        } => {
+            crate::pack::pack(&archive, &output, force)?;
+            Ok(0)
+        }
+        Cmd::Unpack {
+            pack,
+            output,
+            force,
+        } => {
+            crate::pack::unpack(&pack, &output, force)?;
+            Ok(0)
         }
         Cmd::Stats { dir } => {
             println!("{:#?}", report::stats(&dir)?);

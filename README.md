@@ -28,6 +28,10 @@ are derived and can be rebuilt. `convolith validate` verifies the ledger and its
 checksum. The format is specified publicly:
 [`spec/`](spec/README.md).
 
+Use `convolith pack ARCHIVE --output history.convolith` for a portable,
+single-file backup and `convolith unpack history.convolith --output RESTORE_DIR`
+to restore it. The output is never overwritten unless `--force` is supplied.
+
 ## Why
 
 AI history fragments. The same conversation exists as a live session store, a

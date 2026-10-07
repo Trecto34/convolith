@@ -27,6 +27,24 @@ Examples that validate against those schemas: [`examples/`](examples/).
 
 ## 1. Design rules
 
+### Portable pack container v1
+
+`convolith pack` stores a deterministic tar archive compressed as a standard
+Zstandard frame. Entries use sorted relative paths and fixed uid/gid, mode and
+mtime. `PACK-MANIFEST.json` identifies `format: convolith-pack`, `version: 1`,
+the tool version, SHA-256 of the source `manifest.json`, and each payload path,
+size and SHA-256. The pack manifest is not self-listed. Unpack verifies the
+complete entry set and hashes before writing the destination.
+
+All archive files are included, including aggregates, reports, schemas,
+artifacts and checksums. Only `indexes/search.sqlite` (a rebuildable index),
+`staging/` (scratch), and root `collect-state.json` (collection resume runtime
+state, not canonical dataset data) are excluded. Other index sidecars are
+excluded with the search database. Portable pack v1 rejects non-file tar
+entries and unsafe paths. The destination is published by sibling-directory
+rename. Use packs as the recommended single-file backup; retain the source
+directory until a restore has been validated.
+
 1. **Nothing is dropped silently.** Every source record is either imported,
    reported as a duplicate, counted as skipped with a reason, or counted as
    failed. The accounting identity

@@ -15,6 +15,7 @@ pub mod importer;
 pub mod ledger;
 pub mod leveldb;
 pub mod model;
+pub mod pack;
 pub mod parser;
 pub mod parsers;
 pub mod report;

@@ -176,3 +176,6 @@ First cut. Interfaces and the canonical format are still moving before 1.0.
 
 [Unreleased]: https://github.com/example/convolith/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/example/convolith/releases/tag/v0.1.0
+# Unreleased
+
+- Add deterministic `convolith pack` / `unpack` portable archive containers.
