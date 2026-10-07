@@ -1,9 +1,10 @@
 //! Deterministic portable container for complete canonical archives.
 use anyhow::{bail, Context, Result};
+use rusqlite::{backup::Backup, Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -30,15 +31,22 @@ fn files(root: &Path) -> Result<BTreeMap<String, Vec<u8>>> {
     let mut out = BTreeMap::new();
     for e in walkdir::WalkDir::new(root).follow_links(false) {
         let e = e?;
+        if e.file_type().is_symlink() {
+            bail!(
+                "archive contains a symlink, refusing to omit it: {}",
+                e.path().display()
+            );
+        }
         if !e.file_type().is_file() {
             continue;
         }
         let p = e.path().strip_prefix(root)?;
         let rel = p.to_string_lossy().replace('\\', "/");
-        if rel == "collect-state.json"
-            || rel.starts_with("staging/")
+        if rel.starts_with("staging/")
             || rel == "indexes/search.sqlite"
             || rel.starts_with("indexes/search.sqlite-")
+            || rel == "provenance/provenance.sqlite-wal"
+            || rel == "provenance/provenance.sqlite-shm"
         {
             continue;
         }
@@ -46,11 +54,95 @@ fn files(root: &Path) -> Result<BTreeMap<String, Vec<u8>>> {
     }
     Ok(out)
 }
+fn verify_checksum_map(map: &BTreeMap<String, Vec<u8>>) -> Result<()> {
+    let text = std::str::from_utf8(
+        map.get("checksums.sha256")
+            .context("checksums.sha256 missing")?,
+    )?;
+    let mut seen = BTreeSet::new();
+    for (i, line) in text.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let (want, rel) = line
+            .split_once("  ")
+            .with_context(|| format!("malformed checksums.sha256 line {}", i + 1))?;
+        let rel = crate::archive::sanitize_entry_path(rel, 4096)
+            .context("unsafe checksums.sha256 path")?;
+        let name = rel.to_string_lossy().replace('\\', "/");
+        if !seen.insert(name.clone()) {
+            bail!("duplicate checksums.sha256 entry: {name}");
+        }
+        let data = map
+            .get(&name)
+            .with_context(|| format!("checksummed file missing: {name}"))?;
+        if sha(data) != want.trim() {
+            bail!("archive checksum mismatch: {name}");
+        }
+    }
+    if seen.is_empty() {
+        bail!("checksums.sha256 is empty");
+    }
+    Ok(())
+}
+fn sqlite_snapshot(root: &Path) -> Result<Vec<u8>> {
+    let src_path = root.join("provenance/provenance.sqlite");
+    let wal_path = PathBuf::from(format!("{}-wal", src_path.display()));
+    if fs::metadata(&wal_path)
+        .map(|m| m.len() == 0)
+        .unwrap_or(true)
+    {
+        return Ok(fs::read(src_path)?);
+    }
+    let src = Connection::open_with_flags(&src_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let tmp = std::env::temp_dir().join(format!(
+        "convolith-snapshot-{}-{nonce}.sqlite",
+        std::process::id()
+    ));
+    let mut dst = Connection::open(&tmp)?;
+    Backup::new(&src, &mut dst)?.run_to_completion(
+        64,
+        std::time::Duration::from_millis(10),
+        None,
+    )?;
+    drop(dst);
+    let bytes = fs::read(&tmp)?;
+    fs::remove_file(tmp)?;
+    Ok(bytes)
+}
 pub fn pack(root: &Path, output: &Path, force: bool) -> Result<()> {
     if output.exists() && !force {
         bail!("output exists (use --force): {}", output.display())
     }
     let mut fsmap = files(root)?;
+    verify_checksum_map(&fsmap)?;
+    // Collection resume state is included in source checksum verification, but
+    // is runtime state rather than canonical archive content.
+    fsmap.remove("collect-state.json");
+    let snapshot = sqlite_snapshot(root)?;
+    fsmap.insert("provenance/provenance.sqlite".into(), snapshot.clone());
+    // Ensure the restored snapshot's checksum reflects committed WAL pages.
+    let old = std::str::from_utf8(fsmap.get("checksums.sha256").unwrap())?;
+    let revised = old
+        .lines()
+        .filter_map(|line| {
+            if line.ends_with("  collect-state.json") {
+                return None;
+            }
+            Some(match line.split_once("  ") {
+                Some((_, "provenance/provenance.sqlite")) => {
+                    format!("{}  provenance/provenance.sqlite", sha(&snapshot))
+                }
+                _ => line.to_owned(),
+            })
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    fsmap.insert("checksums.sha256".into(), revised.into_bytes());
     let raw = fsmap
         .get("manifest.json")
         .context("archive lacks manifest.json")?;
@@ -98,8 +190,11 @@ pub fn pack(root: &Path, output: &Path, force: bool) -> Result<()> {
     Ok(())
 }
 pub fn unpack(pack: &Path, output: &Path, force: bool) -> Result<()> {
-    if output.exists() && (!force || fs::read_dir(output)?.next().is_some()) {
-        bail!("destination must not exist or must be empty (empty existing directory is accepted only with --force)")
+    if output.exists() && !output.is_dir() {
+        bail!("destination exists and is not a directory");
+    }
+    if output.exists() && !force && fs::read_dir(output)?.next().is_some() {
+        bail!("destination is not empty (use --force to replace it)")
     }
     let parent = output.parent().unwrap_or(Path::new("."));
     fs::create_dir_all(parent)?;
@@ -113,8 +208,14 @@ pub fn unpack(pack: &Path, output: &Path, force: bool) -> Result<()> {
         let dec = zstd::Decoder::new(f)?;
         let mut ar = tar::Archive::new(dec);
         let mut seen = BTreeMap::<String, Vec<u8>>::new();
+        let mut total = 0u64;
+        let mut count = 0usize;
         for entry in ar.entries()? {
             let mut e = entry?;
+            count += 1;
+            if count > 100_000 {
+                bail!("pack exceeds entry-count limit (100000)");
+            }
             let ty = e.header().entry_type();
             if !ty.is_file() {
                 bail!("unsupported tar entry type")
@@ -130,6 +231,12 @@ pub fn unpack(pack: &Path, output: &Path, force: bool) -> Result<()> {
             if size > 2 * 1024 * 1024 * 1024 {
                 bail!("pack entry exceeds size limit")
             };
+            total = total
+                .checked_add(size)
+                .context("decompressed size overflow")?;
+            if total > 20 * 1024 * 1024 * 1024 {
+                bail!("pack exceeds aggregate decompressed-size limit (20 GiB)");
+            }
             let mut b = Vec::new();
             e.read_to_end(&mut b)?;
             if b.len() as u64 != size {
@@ -148,6 +255,8 @@ pub fn unpack(pack: &Path, output: &Path, force: bool) -> Result<()> {
             bail!("pack file list does not match entries")
         };
         for r in &m.files {
+            crate::archive::sanitize_entry_path(&r.path, 4096)
+                .context("unsafe manifest file path")?;
             let b = seen.get(&r.path).context("listed file missing")?;
             if b.len() as u64 != r.size || sha(b) != r.sha256 {
                 bail!("pack file integrity failure: {}", r.path)
@@ -160,6 +269,7 @@ pub fn unpack(pack: &Path, output: &Path, force: bool) -> Result<()> {
         {
             bail!("source manifest id mismatch")
         };
+        verify_checksum_map(&seen)?;
         for (name, b) in &seen {
             let dest = tmp.join(PathBuf::from(name));
             if let Some(p) = dest.parent() {
@@ -169,7 +279,11 @@ pub fn unpack(pack: &Path, output: &Path, force: bool) -> Result<()> {
             f.write_all(b)?;
         }
         if output.exists() {
-            fs::remove_dir(output)?;
+            if output.is_dir() {
+                fs::remove_dir_all(output)?;
+            } else {
+                bail!("destination exists and is not a directory");
+            }
         }
         fs::rename(&tmp, output)?;
         Ok(())

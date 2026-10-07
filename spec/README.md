@@ -36,6 +36,13 @@ the tool version, SHA-256 of the source `manifest.json`, and each payload path,
 size and SHA-256. The pack manifest is not self-listed. Unpack verifies the
 complete entry set and hashes before writing the destination.
 
+Packing first verifies the source `checksums.sha256`. If the provenance ledger
+has an active WAL, the pack uses SQLite's online backup API to capture a
+consistent committed snapshot without checkpointing or changing the source;
+the portable checksum list is adjusted to hash that snapshot. Runtime
+`collect-state.json` is checksum-verified in the source, then omitted from the
+container and removed from the portable checksum list.
+
 All archive files are included, including aggregates, reports, schemas,
 artifacts and checksums. Only `indexes/search.sqlite` (a rebuildable index),
 `staging/` (scratch), and root `collect-state.json` (collection resume runtime
