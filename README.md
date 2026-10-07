@@ -187,6 +187,33 @@ have no `children`); `chatgpt_on_current_path` marks the live one. ChatGPT `thou
 parts, so v0.1.0 content fingerprints stay valid. Messages copied by conversation branching
 share ids across conversations and merge into one event with several observations.
 
+## One file with all your history
+
+Collect every machine and every web export into one archive, then export a single
+chronological file. On Windows (PowerShell), the same commands work on Linux/macOS with
+different paths.
+
+```powershell
+# 1. Windows + every WSL distro + an SSH host (uses your own OpenSSH config/keys)
+convolith collect --local --wsl --ssh user@ssh-host.example -o C:\convolith\archive
+
+# 2. Official web exports (ChatGPT, Claude, Gemini Takeout, Perplexity zips)
+convolith import C:\Users\you\Downloads\EXPORTS\chatgpt-export.zip -o C:\convolith\archive
+convolith import C:\Users\you\Downloads\EXPORTS\claude-export.zip  -o C:\convolith\archive
+
+# 3. One provider-independent, globally chronological, deduplicated JSONL
+convolith all C:\convolith\archive --output C:\convolith\convolith-all.jsonl   # or --stdout
+
+# 4. Optional: one portable file holding the whole archive (provenance included)
+convolith pack C:\convolith\archive --output C:\convolith\history.convolith
+convolith unpack C:\convolith\history.convolith --output C:\convolith\restored
+```
+
+`convolith-all.jsonl` is the interchange file for a harness; `history.convolith` is the
+backup. Re-running steps 1 and 2 is safe: duplicates are skipped and `collect --resume`
+skips unchanged stores. Confirm `ssh user@ssh-host.example` works on its own first.
+Check `convolith <command> --help` for the exact flags of your build.
+
 ## Known limitations
 
 - Antigravity SQLite/protobuf stores (`antigravity-cli/conversations/*.db`, `.pb`,
