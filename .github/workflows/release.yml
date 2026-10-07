@@ -38,6 +38,45 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
 
+      - name: Resolve and validate package version (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo_version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "convolith") | .version')"
+          if [[ -z "$cargo_version" || "$cargo_version" == null ]]; then
+            echo "Could not read the convolith version from cargo metadata" >&2
+            exit 1
+          fi
+          version="$cargo_version"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            if [[ "$version" != "$cargo_version" ]]; then
+              echo "Tag $GITHUB_REF_NAME does not match Cargo.toml version $cargo_version" >&2
+              exit 1
+            fi
+          fi
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Resolve and validate package version (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $package = $metadata.packages | Where-Object { $_.name -eq 'convolith' } | Select-Object -First 1
+          if ($null -eq $package -or [string]::IsNullOrWhiteSpace($package.version)) {
+            throw 'Could not read the convolith version from cargo metadata'
+          }
+          $version = $package.version
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $tagVersion = $env:GITHUB_REF_NAME -replace '^v', ''
+            if ($tagVersion -cne $package.version) {
+              throw "Tag $env:GITHUB_REF_NAME does not match Cargo.toml version $($package.version)"
+            }
+            $version = $tagVersion
+          }
+          Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_VERSION=$version"
+
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }}
 
@@ -46,7 +85,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="$(cargo pkgid --quiet | sed 's/.*@//')"
+          version="$RELEASE_VERSION"
           name="convolith-${version}-${{ matrix.target }}"
           mkdir -p "dist/$name"
           cp "target/${{ matrix.target }}/release/convolith" "dist/$name/"
@@ -57,7 +96,7 @@ jobs:
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
-          $version = (cargo pkgid --quiet) -replace '^.*@', ''
+          $version = $env:RELEASE_VERSION
           $name = "convolith-$version-${{ matrix.target }}"
           New-Item -ItemType Directory -Force -Path "dist/$name" | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/convolith.exe" "dist/$name/"
