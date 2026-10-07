@@ -1,6 +1,7 @@
 //! convolith — loss-preserving, provenance-first canonicalizer for fragmented AI
 //! conversation history.
 
+pub mod all_export;
 pub mod archive;
 pub mod artifacts;
 pub mod cli;

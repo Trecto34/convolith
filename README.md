@@ -115,6 +115,8 @@ convolith provenance ./canonical-ai-history ev_0123456789abcdef01234567
 convolith inspect-event ./canonical-ai-history ev_0123456789abcdef01234567
 convolith report ./canonical-ai-history
 convolith rebuild-index ./canonical-ai-history
+convolith all ./canonical-ai-history --output convolith-all.jsonl   # one chronological JSONL of everything
+convolith all ./canonical-ai-history --stdout | head                 # same, to stdout (diagnostics on stderr)
 convolith parsers                       # list built-in parsers (authoritative for what is supported)
 
 # find the well-known stores on this machine, WSL distros and SSH hosts, then import
@@ -268,6 +270,7 @@ honest picture — including prior art treated as irrelevant and why — is in
 | Path | Contents |
 |------|----------|
 | [`spec/README.md`](spec/README.md) | canonical format v1: layout, framing, ids, timestamps, provenance, dedup/conflict, redaction |
+| [`spec/all-export.md`](spec/all-export.md) | `convolith all` export (`convolith.all/v1`): ordering, field mapping, limits |
 | [`spec/*.schema.json`](spec) | JSON Schema 2020-12 for event, conversation, artifact, provenance |
 | [`spec/examples/`](spec/examples) | examples, validated against the schemas |
 | [`docs/PRIOR_ART.md`](docs/PRIOR_ART.md) | prior art and what was taken from it |

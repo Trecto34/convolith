@@ -1,0 +1,326 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://convolith.example/spec/v1/all-export.schema.json",
+  "title": "convolith.all/v1 line",
+  "type": "object",
+  "required": [
+    "schema",
+    "event_id",
+    "timestamp",
+    "timestamp_original",
+    "timestamp_confidence",
+    "timestamp_confidence_detail",
+    "conversation_id",
+    "session_id",
+    "parent_event_id",
+    "seq",
+    "role",
+    "event_type",
+    "provider",
+    "application",
+    "model",
+    "agent",
+    "machine_id",
+    "project_id",
+    "repository_id",
+    "working_directory",
+    "branch",
+    "commit",
+    "worktree_id",
+    "subagent",
+    "conversation",
+    "content",
+    "metadata",
+    "source_refs"
+  ],
+  "properties": {
+    "schema": {
+      "const": "convolith.all/v1"
+    },
+    "event_id": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d\\.\\d{9}Z$"
+    },
+    "timestamp_original": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "timestamp_confidence": {
+      "enum": [
+        "exact",
+        "derived",
+        "sequence-only",
+        "unknown"
+      ]
+    },
+    "timestamp_confidence_detail": {
+      "enum": [
+        "exact",
+        "provider_derived",
+        "database_derived",
+        "filesystem_derived",
+        "sequence_only",
+        "unknown"
+      ]
+    },
+    "conversation_id": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "parent_event_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "role": {
+      "enum": [
+        "user",
+        "assistant",
+        "system",
+        "tool",
+        "developer",
+        "other"
+      ]
+    },
+    "event_type": {
+      "enum": [
+        "message",
+        "reasoning",
+        "tool_call",
+        "tool_result",
+        "compaction",
+        "system_note",
+        "attachment",
+        "agent_spawn",
+        "agent_result",
+        "interruption",
+        "error",
+        "opaque"
+      ]
+    },
+    "provider": {
+      "type": "string"
+    },
+    "application": {
+      "type": "string"
+    },
+    "model": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "agent": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "machine_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "project_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "repository_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "working_directory": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "branch": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "commit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "worktree_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "subagent": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "is_subagent": {
+          "const": true
+        },
+        "agent_id": {},
+        "parent_session_id": {},
+        "parent_thread_id": {},
+        "depth": {}
+      }
+    },
+    "conversation": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ended_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "event_count": {
+          "type": "integer"
+        }
+      }
+    },
+    "content": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "text",
+              "thinking",
+              "tool_call",
+              "tool_result",
+              "attachment",
+              "data",
+              "opaque"
+            ]
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "source_id",
+          "original_path",
+          "parser"
+        ],
+        "properties": {
+          "observation_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "original_path": {
+            "type": "string"
+          },
+          "source_path": {
+            "type": "string"
+          },
+          "container_chain": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "record_index": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "record_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parser": {
+            "type": "string"
+          },
+          "parser_version": {
+            "type": "string"
+          },
+          "source_sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_seen": {
+            "type": "string"
+          },
+          "import_run": {
+            "type": "string"
+          },
+          "identity_tier": {
+            "type": "string"
+          },
+          "machine_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

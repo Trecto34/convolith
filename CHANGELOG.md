@@ -24,6 +24,12 @@ is independent of the crate version.
   are inventoried as unsupported with a reason. Web-export events carry the importing
   machine id.
 
+- `convolith all ARCHIVE (--output FILE | --stdout)`: read-only export of every canonical
+  event as one globally chronological, deduplicated, deterministic JSONL stream in the
+  provider-independent `convolith.all/v1` schema (`spec/all-export.md`,
+  `spec/all-export.schema.json`). Events without a usable timestamp keep
+  `timestamp: null` and are placed after all timestamped events.
+
 ### Changed
 
 - ChatGPT export parsing keeps the v0.1.0 event and conversation ids and content
