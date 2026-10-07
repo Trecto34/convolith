@@ -312,7 +312,7 @@ Either way:
   "format_version": 1,
   "schema_version": 1,
   "tool": "convolith",
-  "tool_version": "0.1.0",
+  "tool_version": "0.2.0",
   "created_at": "2025-01-01T00:00:00Z",
   "updated_at": "2025-01-02T00:00:00Z",
   "redaction_policy": "redact",
@@ -329,7 +329,7 @@ Either way:
   "derived_files": [ { "path": "…", "records": 0, "bytes": 0, "sha256": "…", "import_run": "" } ],
   "import_runs": [
     { "import_run": "run_0123456789ab", "started_at": "…", "finished_at": "…",
-      "tool_version": "0.1.0", "schema_version": 1, "secret_policy": "redact",
+      "tool_version": "0.2.0", "schema_version": 1, "secret_policy": "redact",
       "args": [], "events_new": 0, "events_duplicate": 0, "sources_examined": 0,
       "sources_skipped": 0, "sources_failed": 0, "parse_errors": 0,
       "state": "complete", "notes": [] }

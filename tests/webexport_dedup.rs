@@ -35,10 +35,23 @@ fn same_provider_ids_from_a_local_copy_and_a_web_zip_dedup() {
     assert!(log.contains("events: 0 new, 1 duplicate"), "{log}");
     assert_eq!(events(&out).len(), 1);
     // both observations are kept as provenance of the one event
-    let p = provenance(&out, &events(&out)[0].event_id);
+    // Provenance keeps the original platform path; normalize separators for
+    // this cross-platform assertion without changing the stored value.
+    let p: Value = serde_json::from_str(&provenance(&out, &events(&out)[0].event_id)).unwrap();
+    let paths: Vec<_> = p
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["source_path"].as_str().unwrap().replace('\\', "/"))
+        .collect();
     assert!(
-        p.contains("local/conversations.json") && p.contains("web.zip!/conversations.json"),
-        "{p}"
+        paths
+            .iter()
+            .any(|path| path.ends_with("local/conversations.json"))
+            && paths
+                .iter()
+                .any(|path| path.ends_with("web.zip!/conversations.json")),
+        "{paths:?}"
     );
 }
 
