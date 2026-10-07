@@ -773,6 +773,9 @@ fn import_source(
     labelled.provider_label = Some(detection.provider.clone());
     labelled.application_label = Some(detection.application.clone());
     labelled.parser_id = Some(parser.id().to_string());
+    if labelled.machine_id.is_none() && parser.is_web_export() {
+        labelled.machine_id = crate::collect::importing_machine_id();
+    }
     let source = &labelled;
 
     let mut ctx = ImportCtx {

@@ -134,6 +134,12 @@ pub trait SourceParser: Send + Sync {
     /// Human application label, e.g. `claude-code`.
     fn application(&self) -> &'static str;
     fn capabilities(&self) -> Capabilities;
+    /// True for official web-chat exports (downloaded files, not a store on the
+    /// machine that wrote them): the importer then records the importing machine
+    /// as the event's machine when none was configured.
+    fn is_web_export(&self) -> bool {
+        false
+    }
     /// One-line description of what the parser reads, for `convolith parsers`.
     fn description(&self) -> &'static str;
 

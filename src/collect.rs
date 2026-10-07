@@ -126,6 +126,17 @@ pub fn machine(kind: Kind, os: LocalOs) -> Machine {
     }
 }
 
+/// Machine id of the machine running this process, `None` when it cannot be
+/// determined. Used to stamp web-export imports (see `SourceParser::is_web_export`).
+pub fn importing_machine_id() -> Option<String> {
+    let os = if cfg!(windows) {
+        LocalOs::Windows
+    } else {
+        LocalOs::Linux
+    };
+    Some(machine(Kind::Local, os).id).filter(|id| !id.is_empty())
+}
+
 /// Domain-separated hash; neither the OS identifier nor a filesystem path is
 /// exposed in archive machine ids. Hostnames may change without changing this.
 pub fn local_machine_id(os: LocalOs, key: &str) -> String {

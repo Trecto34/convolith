@@ -6,16 +6,20 @@ use crate::parser::Registry;
 pub mod antigravity;
 pub mod chatgpt;
 pub mod claude_code;
+pub mod claude_web;
 pub mod codex;
 pub mod deepseek;
 pub mod gemini_cli;
+pub mod gemini_web;
 pub mod generic;
 pub mod hermes;
 mod jsonl;
 pub mod minimax;
 pub mod opencode;
+pub mod perplexity;
 pub mod pi;
 mod rows;
+mod webexport;
 
 /// Register every parser in this module. Order is the tie-break order of
 /// [`Registry`]: most specific first.
@@ -23,6 +27,9 @@ pub fn register_all(registry: &mut Registry) {
     registry.register(Box::new(claude_code::ClaudeCodeParser));
     registry.register(Box::new(codex::CodexParser));
     registry.register(Box::new(chatgpt::ChatGptParser));
+    registry.register(Box::new(claude_web::ClaudeWebParser));
+    registry.register(Box::new(gemini_web::GeminiWebParser));
+    registry.register(Box::new(perplexity::PerplexityParser));
     registry.register(Box::new(opencode::OpenCodeParser));
     registry.register(Box::new(pi::PiParser::pi()));
     registry.register(Box::new(pi::PiParser::oh_my_pi()));
@@ -51,6 +58,7 @@ pub fn known_unsupported(probe: &crate::source::Probe) -> Option<(&'static str, 
         .or_else(|| minimax::known_unsupported(probe))
         .or_else(|| deepseek::known_unsupported(probe))
         .or_else(|| desktop_installation(probe))
+        .or_else(|| webexport::known_unsupported(probe))
 }
 
 fn desktop_installation(probe: &crate::source::Probe) -> Option<(&'static str, &'static str)> {

@@ -9,6 +9,25 @@ is independent of the crate version.
 
 ## [Unreleased]
 
+### Added
+
+- Parsers for official web-chat exports: ChatGPT (extended: sharded
+  `conversations-NNN.json`, provider-id identity, all branches, current-path flag,
+  attachments), Claude (`claude_web_export`), Gemini Google Takeout (`gemini_takeout`:
+  Conversation History, My Activity JSON) and Perplexity (`perplexity_export`, version 1).
+  Zips, extracted folders and bare files auto-detect. Verified against a real sample: only
+  the Gemini Takeout Conversation History shape; ChatGPT, Claude, My Activity and
+  Perplexity are **unverified-against-real-export** (documented layouts, synthetic tests).
+  Unrecognised schemas/versions and the sidecar files of these exports are inventoried as
+  unsupported with a reason. Web-export events carry the importing machine id.
+
+### Changed
+
+- ChatGPT export events now use native identity (provider conversation/message ids)
+  instead of the position+content fingerprint, so a newer export of the same account adds
+  only new events. Archives that already hold ChatGPT export events from v0.1.0 will see
+  those events re-imported once under the new ids.
+
 ### Changed
 
 - Project renamed from `aichive` to `Convolith` (crate, binary, lib, `CONVOLITH_*` env,

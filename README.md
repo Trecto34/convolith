@@ -68,7 +68,7 @@ formats are private, undocumented and change without notice.
 |--------|--------|-------|
 | Claude Code JSONL (`~/.claude/projects/**`) | supported |messages, tool calls/results, thinking (public/summary/opaque), subagent sidechains, compaction/summary records, interruptions, errors; bookkeeping record types are deliberately skipped and counted |
 | Codex rollout JSONL (`~/.codex/sessions/**`) | supported | session headers incl. legacy shape, response items, reasoning summaries, encrypted reasoning kept opaque, function/custom/shell/web-search calls, `event_msg` kinds; turn contexts applied to following events |
-| ChatGPT export (`conversations.json`) | supported | the `mapping` node graph is kept with its forks; no remote attachments are fetched |
+| ChatGPT / Claude / Gemini / Perplexity web exports | see [Official web-chat exports](#official-web-chat-exports) | zips or extracted folders of the providers' own data downloads; per-provider verification status below |
 | Generic JSON / JSON Lines | supported, lossy-by-design | last-resort role/content extraction for files that no other parser claims; unknown fields survive where the envelope allows |
 | opencode | supported | file store (`storage/{session,message,part}/**`), `opencode.db` (read via a staged copy), `opencode export` bundles; unknown part kinds kept opaque |
 | pi / Oh My Pi | supported | JSONL tree sessions (`~/.pi/agent/sessions/**`, `~/.omp/agent/**`); every branch imported, not just the active path |
@@ -141,6 +141,35 @@ removed; `collect-state.json` records per-store fingerprints and `--resume` skip
 unchanged stores (without it everything is re-collected; dedup keeps that idempotent). SSH uses your own `ssh` (BatchMode, 10 s timeout; keys/`~/.ssh/config`
 apply) and the remote needs POSIX `sh` and `tar` (GNU/BSD). Exit status is non-zero only
 if every requested machine failed.
+
+## Official web-chat exports
+
+`convolith import ~/Downloads/chatgpt-export.zip -o ./canonical-ai-history` (a zip, an
+extracted folder, or the bare `conversations.json` / Takeout file) auto-detects the
+provider. Only the files the providers hand out are read: no browser scraping, no
+network. Zips go through the usual expansion limits (path traversal, zip-bomb ratios,
+size caps). Provenance records the zip path plus the member path and the importing
+machine. Re-importing the same or a newer export is idempotent: ids come from the
+provider's conversation/message ids, so only new or changed events are added. Events
+from these exports are only merged with a local source on an identical provider id
+under the same provider+application; identical text alone never merges.
+
+| Export | Parser | Status | How to request it |
+|--------|--------|--------|-------------------|
+| ChatGPT data export (`conversations.json`, sharded `conversations-NNN.json`) | `chatgpt_export` | **unverified-against-real-export** (built from the documented layout; synthetic tests only) | ChatGPT: Settings > Data controls > Export data; the download link arrives by email |
+| Claude (claude.ai) data export (`conversations.json` with `chat_messages`) | `claude_web_export` | **unverified-against-real-export** | claude.ai: Settings > Privacy > Export data; the link arrives by email |
+| Gemini via Google Takeout, `Gemini in Workspace/Conversation History/conversation_*.txt` | `gemini_takeout` | **verified** against a real Takeout (schema inspected; tests synthetic) | takeout.google.com: select Gemini (and/or Gemini in Workspace), JSON where offered |
+| Gemini via Google Takeout, `My Activity/Gemini Apps/MyActivity.json` | `gemini_takeout` | **unverified-against-real-export** | takeout.google.com: select My Activity > Gemini Apps, format JSON |
+| Perplexity thread JSON (version 1 shape documented in `src/parsers/perplexity.rs`) | `perplexity_export` | **unverified-against-real-export**; least certain: Perplexity documents no bulk export schema | account data request / thread export; Markdown/PDF/HTML thread exports are inventoried only |
+
+Not guessed at: an export whose schema or declared version is not recognised is listed
+in the import report as `unsupported` with the reason, never parsed on a best guess.
+Also inventoried (not imported): ChatGPT `chat.html`, `user.json`, `message_feedback.json`,
+attachment files; Claude `projects.json`, `users.json`; Takeout NotebookLM, Gems and
+`MyActivity.html`; conversation images. Attachments are kept as references (name, mime,
+provider file id); their bytes are not imported. Gemini's per-turn times are
+*last-modified* times and are marked so (`gemini_timestamp_kind`). ChatGPT branches
+(regenerations) are all kept; `chatgpt_on_current_path` marks the live one.
 
 ## Known limitations
 

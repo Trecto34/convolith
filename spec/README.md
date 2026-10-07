@@ -347,3 +347,33 @@ record accounting, referential integrity. It exits `1` on any `FAIL`.
   `schema_version` and a migration note in `CHANGELOG.md`.
 - `kind` in a provenance observation (`opaque`, `encrypted_reasoning`,
   `attachment:<type>`, …) is provider-defined and open-ended.
+
+## 12. Official web-chat exports (parser notes)
+
+Informative; the canonical record shape is unchanged. Parsers `chatgpt_export`,
+`claude_web_export`, `gemini_takeout` and `perplexity_export` read the files of the
+providers' own data downloads (zip members or extracted files). Verification status:
+`gemini_takeout` for the Takeout *Conversation History* shape is verified against a real
+export; every other shape is **unverified-against-real-export** (built from the documented
+layout, tested with synthetic fixtures only).
+
+* **Provenance**: `source_path` is `<zip>!/<member>` (or the file path), `container_chain`
+  holds the zip name(s); `record_id` is the provider message id. `machine_id` is the
+  importing machine unless the config names one.
+* **Identity** (tier `native`): conversation key = provider conversation id (ChatGPT
+  `conversation_id`, Claude `uuid`, Perplexity thread id; Gemini Takeout has none, so
+  `gemini-takeout:<file id>:<creation_time>` is used). Event key = provider message id (ChatGPT
+  `message.id`, Claude message `uuid`); Gemini and Perplexity derive `<conversation
+  key>:<role>:<turn_index>` / `<entry id>:query|answer`. Ids that are not globally unique
+  (not a UUID or long token) are demoted to the coordinates/fingerprint tiers by the
+  ordinary rules. The key includes provider and application, so a web export merges
+  with another source only when both agree on provider, application and id; text alone
+  never merges (§7).
+* **Timestamps**: `timestamp_original` keeps the provider value verbatim (epoch float or
+  ISO string), `timestamp` is its UTC instant; a missing time stays missing.
+* **Branches**: ChatGPT `mapping` nodes are all emitted; `parent_native_id` points to the
+  nearest ancestor carrying a message. Claude exports are flat; a parent link exists only
+  when the export provides `parent_message_uuid`.
+* **Unknown versions**: files that look like an export but match no known shape (or a
+  Perplexity file declaring another `version`) are inventoried as `unsupported` with a
+  reason; individual malformed conversations are counted as failed records.
